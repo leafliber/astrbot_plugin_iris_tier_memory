@@ -57,11 +57,10 @@
    - 创建 `requirements.txt`，声明依赖：`chromadb`、`kuzu`
    - 为什么：AstrBot 通过 `metadata.yaml` 识别插件，`_conf_schema.json` 生成 WebUI 配置表单
 
-2. **实现 config 统一管理模块** (`iris_memory/config.py`)
-   - 定义 `Config` 类，继承 `dict`，支持用户配置与隐藏配置分层
-   - 实现配置优先级：用户配置 > 隐藏配置 > 默认值
-   - 实现热修改支持（原子操作替换配置对象，使用 `threading.Lock` 防竞态）
-   - 提供 `get_hidden_config()` 方法供内部模块访问隐藏配置
+2. **实现 config 统一管理模块** (`iris_memory/config/`)
+   - 使用 dataclasses 定义配置结构，支持扁平化键名访问和三层优先级查找
+   - 提供线程安全的配置管理和观察者模式
+   - 已完成实现，详见【注意事项】中的使用说明
    - 为什么：配置系统是所有模块的基础，需先就绪
 
 3. **实现平台接口统一管理模块** (`iris_memory/platform.py`)
@@ -728,6 +727,69 @@
 ---
 
 ## 注意事项
+
+### Config 模块使用方法
+
+配置系统已实现完成，提供统一的配置管理接口。
+
+**初始化（插件入口）**：
+```python
+# main.py
+from pathlib import Path
+from iris_memory.config import init_config
+
+class IrisTierMemoryPlugin(Star):
+    def __init__(self, context: StarContext, config: AstrBotConfig):
+        super().__init__(context)
+        data_dir = Path(context.get_data_dir())
+        self.config = init_config(config, data_dir)
+```
+
+**其他模块使用**：
+```python
+# 方式1：全局函数（推荐）
+from iris_memory.config import get_config
+
+config = get_config()
+enable_l1 = config.get("l1_buffer.enable")      # 用户配置
+debug_mode = config.get("debug_mode")           # 隐藏配置
+
+# 方式2：字典访问（不推荐）
+enable_l1 = config["l1_buffer"]["enable"]
+
+# 方式3：依赖注入（不推荐）
+class MyComponent:
+    def __init__(self, config: Config):
+        self.max_tokens = config.get("l1_buffer.max_queue_tokens")
+```
+
+**热修改隐藏配置**：
+```python
+config = get_config()
+config.set_hidden("debug_mode", True)
+config.set_hidden("token_budget_max_tokens", 3000)
+```
+
+**配置变更监听**：
+```python
+def on_config_change(key: str, old_value, new_value):
+    if key == "debug_mode":
+        logger.info(f"调试模式已切换：{old_value} → {new_value}")
+
+config.on_config_change(on_config_change)
+```
+
+**配置优先级**：用户配置 > 隐藏配置 > 默认值
+
+**文件位置**：
+- `iris_memory/config/` - 配置模块目录
+- `data/iris_memory/hidden_config.json` - 隐藏配置持久化文件
+
+**配置项清单**：
+- **用户配置**（WebUI 管理）：L1 Buffer, L2 Memory, L3 KG, 图片解析, 画像系统, 记忆增强, 隔离配置, 定时任务
+- **隐藏配置**（内部参数）：`debug_mode`, `verbose_logging`, `token_budget_max_tokens`, `forgetting_lambda`, `chromadb_batch_size` 等
+
+---
 
 ### 方案标注注意点汇总
 
