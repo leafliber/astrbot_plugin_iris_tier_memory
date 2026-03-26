@@ -27,10 +27,10 @@ logger = logging.getLogger("astrbot")
 class Config:
     """统一配置管理类
     
-    配置优先级("或"的方式覆盖)：
-        1. 用户配置(AstrBotConfig)- 运行时查找，实时同步 WebUI 修改
-        2. 隐藏配置(HiddenConfigManager)- 缓存 + 持久化
-        3. 默认值(Defaults)
+    配置优先级：
+        - 用户配置项(在 _conf_schema.json 中定义)：用户配置 > 默认值
+        - 隐藏配置项(不在 _conf_schema.json 中定义)：隐藏配置 > 默认值
+        - 注意：用户配置和隐藏配置不会冲突，因为它们的配置项完全不同
     
     键名格式：
         - 用户配置：扁平化键名 "l1_buffer.enable"(内部转换为嵌套访问)
@@ -87,9 +87,8 @@ class Config:
             配置值
         
         优先级：
-            1. 用户配置(AstrBotConfig)
-            2. 隐藏配置(HiddenConfigManager)
-            3. 默认值(Defaults)
+            - 用户配置项（如 "l1_buffer.enable"）：用户配置 > 默认值
+            - 隐藏配置项（如 "debug_mode"）：隐藏配置 > 默认值
         
         Examples:
             >>> config.get("l1_buffer.enable")      # 用户配置
@@ -154,8 +153,8 @@ class Config:
             - 线程安全
         
         风险说明：
-            - 如果用户在 WebUI 中也设置了同名配置，优先使用用户配置
-            - 热修改不会覆盖用户配置
+            - 隐藏配置项不在 _conf_schema.json 中定义，不会与用户配置冲突
+            - 隐藏配置支持热修改，修改后立即生效并持久化
         """
         self._hidden.set(key, value)
     
