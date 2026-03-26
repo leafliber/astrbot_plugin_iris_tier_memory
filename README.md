@@ -30,8 +30,7 @@ astrbot_plugin_iris_tier_memory/
 ## 相关资源
 
 - [AstrBot 主项目](https://github.com/AstrBotDevs/AstrBot)
-- [插件开发文档（中文）](https://docs.astrbot.app/dev/star/plugin-new.html)
-- [插件开发文档（英文）](https://docs.astrbot.app/en/dev/star/plugin-new.html)
+- [插件开发文档](https://docs.astrbot.app/dev/star/plugin-new.html)
 
 ## 许可证
 

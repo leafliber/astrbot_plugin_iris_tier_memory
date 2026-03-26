@@ -178,3 +178,7 @@ __marimo__/
 # agent
 AGENTS.md
 CLAUDE.md
+
+# temp files
+/data
+pyrightconfig.json

@@ -26,7 +26,7 @@
         "type": "int",
         "default": 4000,
         "description": "队列最大的 Token 数",
-        "hint": "超过此限制时触发L1总结（和注入上下文数量无关）"
+        "hint": "超过此限制时触发L1总结(和注入上下文数量无关)"
       },
       "max_single_message_tokens": {
         "type": "int",
@@ -189,7 +189,7 @@
   "isolation_config": {
     "type": "object",
     "description": "隔离配置",
-    "hint": "（谨慎修改）控制记忆和图谱的隔离策略",
+    "hint": "(谨慎修改)控制记忆和图谱的隔离策略",
     "items": {
       "enable_group_memory_isolation": {
         "type": "bool",
