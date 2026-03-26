@@ -1,0 +1,241 @@
+{
+  "l1_buffer": {
+    "type": "object",
+    "description": "L1 消息上下文缓冲",
+    "hint": "将最近的固定条消息加入上下文，超限时自动总结",
+    "items": {
+      "enable": {
+        "type": "bool",
+        "default": true,
+        "description": "启用 L1 上下文缓冲"
+      },
+      "summary_provider": {
+        "type": "string",
+        "default": "",
+        "description": "L1 总结模型 Provider",
+        "hint": "选择用于 L1 缓冲总结的模型，留空则使用默认 Provider",
+        "_special": "select_provider"
+      },
+      "inject_queue_length": {
+        "type": "int",
+        "default": 20,
+        "description": "注入上下文的最大消息条数",
+        "hint": "超过此数量将触发自动总结"
+      },
+      "max_queue_tokens": {
+        "type": "int",
+        "default": 4000,
+        "description": "队列最大的 Token 数",
+        "hint": "超过此限制时触发L1总结（和注入上下文数量无关）"
+      },
+      "max_single_message_tokens": {
+        "type": "int",
+        "default": 500,
+        "description": "单条消息最大 Token 数",
+        "hint": "超过此限制的消息将被舍弃，不做任何处理"
+      }
+    }
+  },
+
+  "l2_memory": {
+    "type": "object",
+    "description": "L2 记忆库",
+    "hint": "使用 ChromaDB 存储长期记忆向量",
+    "items": {
+      "enable": {
+        "type": "bool",
+        "default": true,
+        "description": "启用 L2 记忆库"
+      },
+      "summary_provider": {
+        "type": "string",
+        "default": "",
+        "description": "L2 总结模型 Provider",
+        "hint": "选择用于 L2 记忆总结的模型，留空则使用默认 Provider",
+        "_special": "select_provider"
+      },
+      "enable_graph_enhancement": {
+        "type": "bool",
+        "default": false,
+        "description": "启用图增强检索",
+        "hint": "利用 L3 知识图谱扩展 L2 记忆检索结果，发现更多关联信息"
+      },
+      "top_k": {
+        "type": "int",
+        "default": 10,
+        "description": "检索 Top-K",
+        "hint": "从记忆库检索的相关记忆数量"
+      },
+      "max_entries": {
+        "type": "int",
+        "default": 10000,
+        "description": "最大条目数",
+        "hint": "超限后按遗忘权重淘汰低分条目"
+      },
+      "timeout_ms": {
+        "type": "int",
+        "default": 2000,
+        "description": "检索超时 (毫秒)",
+        "hint": "超时后跳过 L2 结果"
+      }
+    }
+  },
+
+  "l3_kg": {
+    "type": "object",
+    "description": "L3 知识图谱",
+    "hint": "使用 KuzuDB 存储实体关系图谱",
+    "items": {
+      "enable": {
+        "type": "bool",
+        "default": true,
+        "description": "启用 L3 知识图谱"
+      },
+      "max_nodes": {
+        "type": "int",
+        "default": 10000,
+        "description": "最大节点数",
+        "hint": "超限后淘汰评分最低的节点及关联边"
+      },
+      "max_edges": {
+        "type": "int",
+        "default": 30000,
+        "description": "最大边数",
+        "hint": "关系边的数量上限"
+      },
+      "timeout_ms": {
+        "type": "int",
+        "default": 1500,
+        "description": "检索超时 (毫秒)",
+        "hint": "超时后跳过图增强结果"
+      }
+    }
+  },
+
+  "image_parsing": {
+    "type": "object",
+    "description": "图片解析",
+    "hint": "将图片解析后加入上下文",
+    "items": {
+      "enable": {
+        "type": "bool",
+        "default": false,
+        "description": "启用图片解析"
+      },
+      "provider": {
+        "type": "string",
+        "default": "",
+        "description": "图片解析模型 Provider",
+        "hint": "选择支持视觉能力的模型，留空则使用默认 Provider",
+        "_special": "select_provider"
+      },
+      "parsing_mode": {
+        "type": "string",
+        "default": "related",
+        "description": "解析模式",
+        "hint": "全：所有图片；相关：触发LLM/被引用/OCR命中的图片",
+        "options": ["all", "related"]
+      },
+      "daily_quota": {
+        "type": "int",
+        "default": 200,
+        "description": "每日解析限额",
+        "hint": "全局共享计数器，超限后静默跳过，每日00:00重置"
+      }
+    }
+  },
+
+  "profile": {
+    "type": "object",
+    "description": "画像系统",
+    "hint": "记录群聊画像和用户画像",
+    "items": {
+      "enable": {
+        "type": "bool",
+        "default": true,
+        "description": "启用画像系统"
+      },
+      "analysis_mode": {
+        "type": "string",
+        "default": "all",
+        "description": "画像分析模式",
+        "hint": "all：分析所有消息；related：仅分析对话相关的消息",
+        "options": ["all", "related"]
+      }
+    }
+  },
+
+  "enhancement": {
+    "type": "object",
+    "description": "记忆增强",
+    "hint": "重排序",
+    "items": {
+      "enable_rerank": {
+        "type": "bool",
+        "default": false,
+        "description": "启用重排序",
+        "hint": "对检索结果进行重排序以提高相关性"
+      },
+      "rerank_provider": {
+        "type": "string",
+        "default": "",
+        "description": "重排序模型 Provider",
+        "hint": "选择用于重排序的模型，留空则使用默认 Provider",
+        "_special": "select_provider"
+      }
+    }
+  },
+
+  "isolation_config": {
+    "type": "object",
+    "description": "隔离配置",
+    "hint": "（谨慎修改）控制记忆和图谱的隔离策略",
+    "items": {
+      "enable_group_memory_isolation": {
+        "type": "bool",
+        "default": false,
+        "description": "启用群聊记忆隔离",
+        "hint": "各群聊记忆独立存储，关闭则全局共享"
+      },
+      "enable_group_isolation": {
+        "type": "bool",
+        "default": false,
+        "description": "启用群聊用户画像隔离",
+        "hint": "各群聊用户画像独立存储，关闭则全局共享，切换会导致用户画像重建"
+      },
+      "enable_persona_isolation": {
+        "type": "bool",
+        "default": false,
+        "description": "启用bot人格隔离",
+        "hint": "不同的bot人格使用独立的记忆和图谱空间，切换会导致记忆、用户画像重建"
+      }
+    }
+  },
+
+  "scheduled_tasks": {
+    "type": "object",
+    "description": "定时任务",
+    "hint": "定期执行记忆维护任务",
+    "items": {
+      "provider": {
+        "type": "string",
+        "default": "",
+        "description": "定时任务模型 Provider",
+        "hint": "选择用于执行定时任务的模型，留空则使用默认 Provider",
+        "_special": "select_provider"
+      },
+      "enable_forgetting": {
+        "type": "bool",
+        "default": true,
+        "description": "启用遗忘清洗任务",
+        "hint": "定期清理过期记忆和标记低置信度记忆"
+      },
+      "enable_merging": {
+        "type": "bool",
+        "default": true,
+        "description": "启用合并任务",
+        "hint": "合并碎片化相似记忆"
+      }
+    }
+  }
+}
