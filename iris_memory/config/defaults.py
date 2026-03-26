@@ -9,7 +9,7 @@ Iris Tier Memory - 默认配置定义
 """
 
 from dataclasses import dataclass, field, asdict
-from typing import Any, Literal, Optional, Dict
+from typing import Literal, Optional, Dict
 
 
 @dataclass
@@ -121,7 +121,7 @@ class Defaults:
     scheduled_tasks: ScheduledTasksConfig = field(default_factory=ScheduledTasksConfig)
     hidden: HiddenConfig = field(default_factory=HiddenConfig)
     
-    def get_by_flat_key(self, flat_key: str) -> Optional[Any]:
+    def get_by_flat_key(self, flat_key: str) -> Optional[object]:
         """通过扁平化键名获取默认值
         
         Args:
@@ -153,7 +153,7 @@ class Defaults:
         
         return None
     
-    def get_section_defaults(self, section: str) -> Dict[str, Any]:
+    def get_section_defaults(self, section: str) -> Dict[str, object]:
         """获取指定配置分组的所有默认值
         
         Args:

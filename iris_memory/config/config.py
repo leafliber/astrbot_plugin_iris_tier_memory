@@ -10,18 +10,19 @@ Iris Tier Memory - 配置管理主类
 - 观察者模式
 """
 
-import logging
 import threading
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Callable, Dict, Optional
 
 from astrbot.api import AstrBotConfig
+
+from iris_memory.core import get_logger
 
 from .defaults import Defaults
 from .hidden_config import HiddenConfigManager
 
 
-logger = logging.getLogger("astrbot")
+logger = get_logger("config")
 
 
 class Config:
@@ -56,6 +57,11 @@ class Config:
         >>> config.on_config_change(lambda k, old, new: logger.info(f"{k}: {old} -> {new}"))
     """
     
+    _user_config: AstrBotConfig
+    _hidden: HiddenConfigManager
+    _defaults: Defaults
+    _lock: threading.RLock
+    
     def __init__(
         self, 
         astrbot_config: AstrBotConfig, 
@@ -74,7 +80,7 @@ class Config:
         self._defaults = defaults
         self._lock = threading.RLock()
     
-    def get(self, flat_key: str, default: Any = None) -> Any:
+    def get(self, flat_key: str, default: object = None) -> object:
         """获取配置值(统一入口)
         
         Args:
@@ -120,7 +126,7 @@ class Config:
         
         return default
     
-    def _get_user_config(self, section: str, key: str) -> Optional[Any]:
+    def _get_user_config(self, section: str, key: str) -> Optional[object]:
         """从 AstrBotConfig 获取用户配置(嵌套访问)
         
         Args:
@@ -136,11 +142,11 @@ class Config:
                 if isinstance(section_config, dict) and key in section_config:
                     return section_config[key]
         except Exception as e:
-            logger.warning(f"[iris-memory:config] 读取用户配置失败 {section}.{key}: {e}")
+            logger.warning(f"读取用户配置失败 {section}.{key}: {e}")
         
         return None
     
-    def set_hidden(self, key: str, value: Any) -> None:
+    def set_hidden(self, key: str, value: object) -> None:
         """热修改隐藏配置
         
         Args:
@@ -158,7 +164,7 @@ class Config:
         """
         self._hidden.set(key, value)
     
-    def update_hidden(self, updates: Dict[str, Any]) -> None:
+    def update_hidden(self, updates: Dict[str, object]) -> None:
         """批量更新隐藏配置
         
         Args:
@@ -177,7 +183,7 @@ class Config:
         """
         return self._hidden.delete(key)
     
-    def on_config_change(self, callback: Callable[[str, Any, Any], None]) -> None:
+    def on_config_change(self, callback: Callable[[str, object, object], None]) -> None:
         """订阅配置变更事件
         
         Args:
@@ -190,7 +196,7 @@ class Config:
         """
         self._hidden.add_observer(callback)
     
-    def remove_config_change_observer(self, callback: Callable[[str, Any, Any], None]) -> bool:
+    def remove_config_change_observer(self, callback: Callable[[str, object, object], None]) -> bool:
         """移除配置变更观察者
         
         Args:
@@ -201,7 +207,7 @@ class Config:
         """
         return self._hidden.remove_observer(callback)
     
-    def get_section(self, section: str) -> Dict[str, Any]:
+    def get_section(self, section: str) -> Dict[str, object]:
         """获取指定配置分组的所有配置值
         
         Args:
@@ -251,7 +257,7 @@ class Config:
         # 检查默认值
         return self._defaults.get_by_flat_key(flat_key) is not None
     
-    def get_all_hidden(self) -> Dict[str, Any]:
+    def get_all_hidden(self) -> Dict[str, object]:
         """获取所有隐藏配置
         
         Returns:
@@ -262,7 +268,7 @@ class Config:
     def reset_hidden_to_defaults(self) -> None:
         """重置隐藏配置为默认值"""
         self._hidden.reset_to_defaults()
-        logger.info("[iris-memory:config] 已重置隐藏配置为默认值")
+        logger.info("已重置隐藏配置为默认值")
 
 
 # ============================================================================
@@ -295,7 +301,7 @@ def init_config(astrbot_config: AstrBotConfig, data_dir: Path) -> Config:
     global _config_instance
     
     if _config_instance is not None:
-        logger.warning("[iris-memory:config] 配置实例已存在，将重新初始化")
+        logger.warning("配置实例已存在，将重新初始化")
     
     # 创建默认配置
     defaults = Defaults()
@@ -307,7 +313,7 @@ def init_config(astrbot_config: AstrBotConfig, data_dir: Path) -> Config:
     # 创建配置实例
     _config_instance = Config(astrbot_config, hidden_manager, defaults)
     
-    logger.info("[iris-memory:config] 配置系统初始化完成")
+    logger.info("配置系统初始化完成")
     
     return _config_instance
 
@@ -341,4 +347,4 @@ def reset_config() -> None:
     """
     global _config_instance
     _config_instance = None
-    logger.debug("[iris-memory:config] 已重置全局配置实例")
+    logger.debug("已重置全局配置实例")

@@ -9,16 +9,17 @@ Iris Tier Memory - 隐藏配置管理器
 """
 
 import json
-import logging
 import threading
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 from dataclasses import asdict
+
+from iris_memory.core import get_logger
 
 from .defaults import HiddenConfig
 
 
-logger = logging.getLogger("astrbot")
+logger = get_logger("config")
 
 
 class HiddenConfigManager:
@@ -36,6 +37,12 @@ class HiddenConfigManager:
     - 热修改后立即生效，但可能导致其他模块的缓存不一致，需通过观察者模式处理
     """
     
+    _path: Path
+    _defaults: HiddenConfig
+    _cache: Dict[str, object]
+    _lock: threading.RLock
+    _observers: List[Callable[[str, object, object], None]]
+    
     def __init__(self, config_path: Path, defaults: HiddenConfig):
         """初始化隐藏配置管理器
         
@@ -45,9 +52,9 @@ class HiddenConfigManager:
         """
         self._path = config_path
         self._defaults = defaults
-        self._cache: Dict[str, Any] = {}
+        self._cache = {}
         self._lock = threading.RLock()
-        self._observers: List[Callable[[str, Any, Any], None]] = []
+        self._observers = []
         
         # 确保目录存在
         self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -60,7 +67,7 @@ class HiddenConfigManager:
         with self._lock:
             if not self._path.exists():
                 # 文件不存在，使用默认值
-                logger.debug(f"[iris-memory:config] 隐藏配置文件不存在，使用默认值: {self._path}")
+                logger.debug(f"隐藏配置文件不存在，使用默认值: {self._path}")
                 return
             
             try:
@@ -69,25 +76,25 @@ class HiddenConfigManager:
                 
                 if isinstance(data, dict):
                     self._cache = data
-                    logger.info(f"[iris-memory:config] 成功加载隐藏配置，共 {len(self._cache)} 项")
+                    logger.info(f"成功加载隐藏配置，共 {len(self._cache)} 项")
                 else:
-                    logger.warning(f"[iris-memory:config] 隐藏配置文件格式错误，使用默认值")
+                    logger.warning(f"隐藏配置文件格式错误，使用默认值")
                     
             except json.JSONDecodeError as e:
-                logger.warning(f"[iris-memory:config] 隐藏配置文件损坏，使用默认值: {e}")
+                logger.warning(f"隐藏配置文件损坏，使用默认值: {e}")
             except Exception as e:
-                logger.error(f"[iris-memory:config] 加载隐藏配置失败: {e}")
+                logger.error(f"加载隐藏配置失败: {e}")
     
     def _persist(self) -> None:
         """持久化隐藏配置到文件"""
         try:
             with open(self._path, 'w', encoding='utf-8') as f:
                 json.dump(self._cache, f, indent=2, ensure_ascii=False)
-            logger.debug(f"[iris-memory:config] 隐藏配置已持久化到 {self._path}")
+            logger.debug(f"隐藏配置已持久化到 {self._path}")
         except Exception as e:
-            logger.error(f"[iris-memory:config] 持久化隐藏配置失败: {e}")
+            logger.error(f"持久化隐藏配置失败: {e}")
     
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Optional[object]:
         """获取隐藏配置值
         
         Args:
@@ -108,7 +115,7 @@ class HiddenConfigManager:
             # 返回默认值
             return getattr(self._defaults, key, None)
     
-    def set(self, key: str, value: Any) -> None:
+    def set(self, key: str, value: object) -> None:
         """设置隐藏配置(热修改)
         
         Args:
@@ -135,16 +142,16 @@ class HiddenConfigManager:
             self._persist()
             
             # 记录日志
-            logger.info(f"[iris-memory:config] 隐藏配置已修改: {key} = {value} (原值: {old_value})")
+            logger.info(f"隐藏配置已修改: {key} = {value} (原值: {old_value})")
             
             # 通知观察者
             for observer in self._observers:
                 try:
                     observer(key, old_value, value)
                 except Exception as e:
-                    logger.error(f"[iris-memory:config] 观察者回调执行失败: {e}")
+                    logger.error(f"观察者回调执行失败: {e}")
     
-    def update(self, updates: Dict[str, Any]) -> None:
+    def update(self, updates: Dict[str, object]) -> None:
         """批量更新隐藏配置
         
         Args:
@@ -168,7 +175,7 @@ class HiddenConfigManager:
             
             # 统一持久化
             self._persist()
-            logger.info(f"[iris-memory:config] 批量更新隐藏配置，共 {len(updates)} 项")
+            logger.info(f"批量更新隐藏配置，共 {len(updates)} 项")
     
     def delete(self, key: str) -> bool:
         """删除隐藏配置项
@@ -186,18 +193,18 @@ class HiddenConfigManager:
             old_value = self._cache.pop(key)
             self._persist()
             
-            logger.info(f"[iris-memory:config] 已删除隐藏配置: {key} (原值: {old_value})")
+            logger.info(f"已删除隐藏配置: {key} (原值: {old_value})")
             
             # 通知观察者(新值为 None 表示已删除)
             for observer in self._observers:
                 try:
                     observer(key, old_value, None)
                 except Exception as e:
-                    logger.error(f"[iris-memory:config] 观察者回调执行失败: {e}")
+                    logger.error(f"观察者回调执行失败: {e}")
             
             return True
     
-    def get_all(self) -> Dict[str, Any]:
+    def get_all(self) -> Dict[str, object]:
         """获取所有隐藏配置(缓存 + 默认值)
         
         Returns:
@@ -210,7 +217,7 @@ class HiddenConfigManager:
             result.update(self._cache)
             return result
     
-    def add_observer(self, callback: Callable[[str, Any, Any], None]) -> None:
+    def add_observer(self, callback: Callable[[str, object, object], None]) -> None:
         """添加配置变更观察者
         
         Args:
@@ -223,9 +230,9 @@ class HiddenConfigManager:
         """
         with self._lock:
             self._observers.append(callback)
-            logger.debug(f"[iris-memory:config] 已添加配置变更观察者，当前共 {len(self._observers)} 个")
+            logger.debug(f"已添加配置变更观察者，当前共 {len(self._observers)} 个")
     
-    def remove_observer(self, callback: Callable[[str, Any, Any], None]) -> bool:
+    def remove_observer(self, callback: Callable[[str, object, object], None]) -> bool:
         """移除配置变更观察者
         
         Args:
@@ -237,7 +244,7 @@ class HiddenConfigManager:
         with self._lock:
             try:
                 self._observers.remove(callback)
-                logger.debug(f"[iris-memory:config] 已移除配置变更观察者，当前共 {len(self._observers)} 个")
+                logger.debug(f"已移除配置变更观察者，当前共 {len(self._observers)} 个")
                 return True
             except ValueError:
                 return False
@@ -246,11 +253,11 @@ class HiddenConfigManager:
         """清空缓存(保留持久化文件)"""
         with self._lock:
             self._cache.clear()
-            logger.info("[iris-memory:config] 已清空隐藏配置缓存")
+            logger.info("已清空隐藏配置缓存")
     
     def reset_to_defaults(self) -> None:
         """重置为默认值"""
         with self._lock:
             self._cache.clear()
             self._persist()
-            logger.info("[iris-memory:config] 已重置隐藏配置为默认值")
+            logger.info("已重置隐藏配置为默认值")
