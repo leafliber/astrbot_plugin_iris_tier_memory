@@ -1,0 +1,6 @@
+name: astrbot_plugin_iris_tier_memory
+display_name: Iris Memory 
+desc: AstrBot 分层记忆系统插件
+version: v0.0.1
+author: Leafiber
+repo: https://github.com/Leafliber/astrbot_plugin_iris_tier_memory
