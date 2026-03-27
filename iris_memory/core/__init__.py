@@ -5,5 +5,12 @@ Iris Tier Memory - 核心模块
 """
 
 from .logger import get_logger
+from .components import Component, ComponentManager, ComponentInitResult, SystemStatus
 
-__all__ = ["get_logger"]
+__all__ = [
+    "get_logger",
+    "Component",
+    "ComponentManager",
+    "ComponentInitResult",
+    "SystemStatus",
+]

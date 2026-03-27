@@ -815,6 +815,73 @@ config.on_config_change(on_config_change)
 
 ---
 
+### 组件管理器使用方法
+
+**定义组件**：
+
+```python
+from iris_memory.core import Component
+from iris_memory.config import get_config
+
+class ChromaAdapter(Component):
+    @property
+    def name(self) -> str:
+        return "l2"
+    
+    async def initialize(self) -> None:
+        config = get_config()
+        self._persist_dir = config.data_dir / "chromadb"
+        # 初始化逻辑...
+        self._is_available = True
+    
+    async def shutdown(self) -> None:
+        self._is_available = False
+```
+
+**初始化**：
+
+```python
+components = (ChromaAdapter(), KuzuAdapter())
+manager = ComponentManager(components)
+results = await manager.initialize_all()
+```
+
+**查询状态**：
+
+```python
+status = manager.status
+
+# 检查模块可用性
+if status.is_module_available("l2"):
+    chroma = manager.get_component("l2")
+
+# 获取可用模块列表
+available = status.get_available_modules()
+```
+
+**卸载**：
+
+```python
+async def terminate(self):
+    if self.component_manager:
+        await self.component_manager.shutdown_all()
+```
+
+**模块命名**：
+
+| 模块 | 说明 |
+|-----|------|
+| `l1` | L1 内存缓冲（内置） |
+| `l2` | L2 记忆库 |
+| `l3` | L3 知识图谱 |
+| `profile` | 画像存储 |
+| `scheduler` | 定时任务 |
+| `image_quota` | 图片限额 |
+
+**特性**：故障隔离、异步初始化、动态注册
+
+---
+
 ### 方案标注注意点汇总
 
 1. **隔离策略**

@@ -43,12 +43,19 @@ class Config:
         - 需要显式清除用户配置才能使用隐藏配置的值
         - 热修改可能导致其他模块的缓存不一致，需通过观察者模式处理
     
+    Attributes:
+        data_dir: 插件数据目录路径
+    
     Examples:
         >>> config = get_config()
         >>> 
         >>> # 获取配置
         >>> enable_l1 = config.get("l1_buffer.enable")
         >>> debug_mode = config.get("debug_mode")
+        >>> 
+        >>> # 获取数据目录
+        >>> data_dir = config.data_dir
+        >>> chroma_dir = data_dir / "chromadb"
         >>> 
         >>> # 热修改隐藏配置
         >>> config.set_hidden("debug_mode", True)
@@ -61,12 +68,14 @@ class Config:
     _hidden: HiddenConfigManager
     _defaults: Defaults
     _lock: threading.RLock
+    _data_dir: Path
     
     def __init__(
         self, 
         astrbot_config: AstrBotConfig, 
         hidden_manager: HiddenConfigManager,
-        defaults: Defaults
+        defaults: Defaults,
+        data_dir: Path
     ):
         """初始化配置管理器
         
@@ -74,11 +83,22 @@ class Config:
             astrbot_config: AstrBot 用户配置对象
             hidden_manager: 隐藏配置管理器
             defaults: 默认配置对象
+            data_dir: 插件数据目录
         """
         self._user_config = astrbot_config
         self._hidden = hidden_manager
         self._defaults = defaults
         self._lock = threading.RLock()
+        self._data_dir = data_dir
+    
+    @property
+    def data_dir(self) -> Path:
+        """获取插件数据目录
+        
+        Returns:
+            数据目录路径
+        """
+        return self._data_dir
     
     def get(self, flat_key: str, default: object = None) -> object:
         """获取配置值(统一入口)
@@ -307,11 +327,12 @@ def init_config(astrbot_config: AstrBotConfig, data_dir: Path) -> Config:
     defaults = Defaults()
     
     # 创建隐藏配置管理器
-    hidden_path = data_dir / "iris_memory" / "hidden_config.json"
+    iris_path = data_dir / "iris_memory"
+    hidden_path = iris_path / "hidden_config.json"
     hidden_manager = HiddenConfigManager(hidden_path, defaults.hidden)
     
     # 创建配置实例
-    _config_instance = Config(astrbot_config, hidden_manager, defaults)
+    _config_instance = Config(astrbot_config, hidden_manager, defaults, iris_path)
     
     logger.info("配置系统初始化完成")
     
