@@ -327,12 +327,11 @@ def init_config(astrbot_config: AstrBotConfig, data_dir: Path) -> Config:
     defaults = Defaults()
     
     # 创建隐藏配置管理器
-    iris_path = data_dir / "iris_memory"
-    hidden_path = iris_path / "hidden_config.json"
+    hidden_path = data_dir / "hidden_config.json"
     hidden_manager = HiddenConfigManager(hidden_path, defaults.hidden)
     
     # 创建配置实例
-    _config_instance = Config(astrbot_config, hidden_manager, defaults, iris_path)
+    _config_instance = Config(astrbot_config, hidden_manager, defaults, data_dir)
     
     logger.info("配置系统初始化完成")
     

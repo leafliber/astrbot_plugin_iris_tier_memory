@@ -12,8 +12,9 @@ from typing import Optional
 
 from astrbot.api import AstrBotConfig
 from astrbot.api.star import Context, Star, register
+from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 
-from iris_memory.config import init_config, get_config
+from iris_memory.config import init_config
 from iris_memory.core import ComponentManager, get_logger
 
 
@@ -53,7 +54,8 @@ class IrisTierMemoryPlugin(Star):
         super().__init__(context)
         
         # 初始化配置系统
-        data_dir = Path(context.get_data_dir())
+        # 使用官方推荐方式获取插件数据目录
+        data_dir = Path(get_astrbot_data_path()) / "plugin_data" / "nonebot_plugin_iris_tier_memory"
         self.config = init_config(config, data_dir)
         logger.info(f"插件数据目录：{data_dir}")
         
