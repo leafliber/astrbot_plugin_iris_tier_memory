@@ -58,24 +58,24 @@
    - 为什么：AstrBot 通过 `metadata.yaml` 识别插件，`_conf_schema.json` 生成 WebUI 配置表单
 
 2. **实现 config 统一管理模块** (`iris_memory/config/`)
-   - 使用 dataclasses 定义配置结构，支持扁平化键名访问和三层优先级查找
+   - 使用 dataclasses 定义配置结构，支持扁平化键名访问和配置项分类管理
    - 提供线程安全的配置管理和观察者模式
    - 已完成实现，详见【注意事项】中的使用说明
    - 为什么：配置系统是所有模块的基础，需先就绪
 
-3. **实现平台接口统一管理模块** (`iris_memory/platform.py`)
+3. **实现平台接口统一管理模块** (`iris_memory/platform/`) ✅ **已完成**
    - 定义 `PlatformAdapter` 抽象类，声明获取用户 ID、用户名、群 ID、群名称等接口
    - 实现 `OneBot11Adapter`（QQ 平台），从 `AstrMessageEvent` 提取平台原始 ID
    - 实现适配器工厂方法，根据 `event.platform_adapter_type` 返回对应适配器
+   - 额外实现：用户昵称、角色识别、群聊判断、原始消息访问、扩展接口
    - 为什么：平台差异需在上层屏蔽，后续模块统一调用
 
-4. **集成 AstrBot 日志系统** (`iris_memory/logger.py`)
+4. **集成 AstrBot 日志系统** (`iris_memory/core/logger.py`) ✅ **已完成**
    - 使用 `logging.getLogger("astrbot")` 获取 AstrBot 日志器
    - 封装 `get_logger(submodule: str)` 函数，返回带 `[iris-memory:{submodule}]` 前缀的日志器
-   - 配置调试级别日志开关（从 config 读取）
    - 为什么：AstrBot 统一管理日志，但需区分模块来源
 
-5. **实现组件初始化框架** (`iris_memory/components/__init__.py`)
+5. **实现组件初始化框架** (`iris_memory/core/components.py`)
    - 定义 `Component` 抽象基类，声明 `initialize()` 和 `shutdown()` 方法
    - 实现 `ComponentManager` 类，管理组件生命周期
    - 各组件初始化失败时记录日志但不阻塞其他组件启动
@@ -90,10 +90,10 @@
 - `metadata.yaml`
 - `_conf_schema.json`
 - `requirements.txt`
-- `iris_memory/config.py`
-- `iris_memory/platform.py`
-- `iris_memory/logger.py`
-- `iris_memory/components/__init__.py`
+- `iris_memory/config/`
+- `iris_memory/platform/`
+- `iris_memory/core/logger.py`
+- `iris_memory/core/components.py`
 - `main.py`（插件入口，继承 `Star`）
 
 ---
@@ -472,12 +472,12 @@
 
 ## 阶段 8：记忆增强（附加功能）
 
-**目标**：记忆检索质量提升，支持重排序（用户配置）、图增强检索和 Token 预算控制（隐藏配置）。
+**目标**：记忆检索质量提升，支持重排序（用户配置）、图增强检索（用户配置）和 Token 预算控制（隐藏配置）。
 
 **涉及模块**：
-- 重排序增强（用户可见配置）
-- 图增强检索（隐藏配置）
-- Token 预算控制（隐藏配置）
+- 重排序增强（用户配置，由 AstrBot 管理）
+- 图增强检索（用户配置，由 AstrBot 管理）
+- Token 预算控制（隐藏配置，通过自定义 Web 路由管理，阶段11实现）
 
 **实现步骤**：
 
@@ -770,6 +770,11 @@ config.set_hidden("debug_mode", True)
 config.set_hidden("token_budget_max_tokens", 3000)
 ```
 
+**注意**：
+- 隐藏配置项不在 _conf_schema.json 中定义，不会与用户配置冲突
+- 隐藏配置通过自定义 Web 路由管理（阶段11实现）
+- 隐藏配置支持热修改，修改后立即生效并持久化到 `data/iris_memory/hidden_config.json`
+
 **配置变更监听**：
 ```python
 def on_config_change(key: str, old_value, new_value):
@@ -779,15 +784,34 @@ def on_config_change(key: str, old_value, new_value):
 config.on_config_change(on_config_change)
 ```
 
-**配置优先级**：用户配置 > 隐藏配置 > 默认值
+**配置优先级**：
+- **用户配置项**（在 _conf_schema.json 中定义）：用户配置 > 默认值
+- **隐藏配置项**（不在 _conf_schema.json 中定义）：隐藏配置 > 默认值
+- **注意**：用户配置和隐藏配置不会冲突，因为它们的配置项完全不同
 
 **文件位置**：
 - `iris_memory/config/` - 配置模块目录
-- `data/iris_memory/hidden_config.json` - 隐藏配置持久化文件
+- Astrbot插件存储下`iris_memory/hidden_config.json` - 隐藏配置持久化文件
 
 **配置项清单**：
-- **用户配置**（WebUI 管理）：L1 Buffer, L2 Memory, L3 KG, 图片解析, 画像系统, 记忆增强, 隔离配置, 定时任务
-- **隐藏配置**（内部参数）：`debug_mode`, `verbose_logging`, `token_budget_max_tokens`, `forgetting_lambda`, `chromadb_batch_size` 等
+- **用户配置**（由astrbot管理，_conf_schema.json 定义）：
+  - L1 Buffer: `enable`, `summary_provider`, `inject_queue_length`, `max_queue_tokens`, `max_single_message_tokens`
+  - L2 Memory: `enable`, `summary_provider`, `enable_graph_enhancement`, `top_k`, `max_entries`, `timeout_ms`
+  - L3 KG: `enable`, `max_nodes`, `max_edges`, `timeout_ms`
+  - 图片解析: `enable`, `provider`, `parsing_mode`, `daily_quota`
+  - 画像系统: `enable`, `analysis_mode`
+  - 记忆增强: `enable_rerank`, `rerank_provider`
+  - 隔离配置: `enable_group_memory_isolation`, `enable_group_isolation`, `enable_persona_isolation`
+  - 定时任务: `provider`, `enable_forgetting`, `enable_merging`
+- **隐藏配置**（通过自定义 Web 路由管理，阶段11实现）：
+  - `debug_mode`: 调试模式开关
+  - `verbose_logging`: 详细日志开关
+  - `token_budget_max_tokens`: Token 预算控制
+  - `forgetting_lambda`: 遗忘权重算法参数
+  - `forgetting_threshold`: 遗忘阈值
+  - `chromadb_batch_size`: ChromaDB 批处理大小
+  - `kuzu_query_timeout_ms`: KuzuDB 查询超时时间
+  - 其他
 
 ---
 
@@ -812,16 +836,16 @@ config.on_config_change(on_config_change)
 
 2. **记忆增强**
    - 提供开关控制（配置项）
-   - **图增强检索**：用户可见配置（L2 记忆层），配置项 `enable_graph_enhancement`
-   - **重排序**：用户可见配置（记忆增强模块），可选择 `rerank_provider`
-   - **Token 预算控制**：隐藏配置控制
+   - **图增强检索**：用户配置（L2 记忆层），配置项 `enable_graph_enhancement`，由 AstrBot 管理
+   - **重排序**：用户配置（记忆增强模块），可选择 `rerank_provider`，由 AstrBot 管理
+   - **Token 预算控制**：隐藏配置，通过自定义 Web 路由管理（阶段11实现）
    - 实现位置：`enhancement/` 模块、`retrievers/memory_retriever.py`
 
 3. **日志管理**
    - 使用 AstrBot 统一日志系统
    - 所有日志输出带 `[iris-memory:{submodule}]` 前缀
    - 调试级别日志可配置开关
-   - 实现位置：`logger.py`
+   - 实现位置：`iris_memory/core/logger.py`
 
 4. **组件初始化**
    - 各组件独立初始化，互不依赖
@@ -861,3 +885,17 @@ config.on_config_change(on_config_change)
      - 最近访问时间（last_access_time）
      - 图谱边权重（基于互动频率）
    - 实现位置：`summarizer.py`、`memory_retriever.py`
+
+---
+
+## 待办事项
+
+### Config 模块
+
+- [ ] **插件主类实现**：`iris_memory/__init__.py` 需实现 `IrisTierMemoryPlugin` 类
+  - 继承 `Star` 类
+  - 在 `__init__` 中调用 `context.get_data_dir()` 获取数据目录
+  - 调用 `init_config(config, data_dir)` 初始化配置系统
+  - 参考文档第 735-746 行的示例代码
+
+- [ ] **配置路径实际调用**：验证 `context.get_data_dir()` 是否正确返回 AstrBot 管理的数据目录
