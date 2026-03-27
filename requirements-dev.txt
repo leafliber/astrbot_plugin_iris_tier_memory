@@ -1,0 +1,9 @@
+# 开发依赖
+
+# 测试框架
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+
+# 代码质量
+pyright>=1.1.0
+ruff>=0.1.0
