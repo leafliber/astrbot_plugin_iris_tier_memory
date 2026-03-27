@@ -823,10 +823,10 @@ config.on_config_change(on_config_change)
 from iris_memory.core import Component
 from iris_memory.config import get_config
 
-class ChromaAdapter(Component):
+class L2MemoryAdapter(Component):
     @property
     def name(self) -> str:
-        return "l2"
+        return "l2_memory"
     
     async def initialize(self) -> None:
         config = get_config()
@@ -841,7 +841,7 @@ class ChromaAdapter(Component):
 **初始化**：
 
 ```python
-components = (ChromaAdapter(), KuzuAdapter())
+components = (L1Buffer(), L2MemoryAdapter(), L3KGAdapter())
 manager = ComponentManager(components)
 results = await manager.initialize_all()
 ```
@@ -852,8 +852,8 @@ results = await manager.initialize_all()
 status = manager.status
 
 # 检查模块可用性
-if status.is_module_available("l2"):
-    chroma = manager.get_component("l2")
+if status.is_module_available("l2_memory"):
+    memory = manager.get_component("l2_memory")
 
 # 获取可用模块列表
 available = status.get_available_modules()
@@ -871,9 +871,9 @@ async def terminate(self):
 
 | 模块 | 说明 |
 |-----|------|
-| `l1` | L1 内存缓冲（内置） |
-| `l2` | L2 记忆库 |
-| `l3` | L3 知识图谱 |
+| `l1_buffer` | L1 内存缓冲 |
+| `l2_memory` | L2 记忆库 |
+| `l3_kg` | L3 知识图谱 |
 | `profile` | 画像存储 |
 | `scheduler` | 定时任务 |
 | `image_quota` | 图片限额 |
@@ -917,8 +917,7 @@ async def terminate(self):
 4. **组件初始化**
    - 各组件独立初始化，互不依赖
    - 某组件失败只影响对应层功能，其余继续运行
-   - 全部组件失败时以仅 L1 模式运行
-   - 实现位置：`components/__init__.py`
+   - 实现位置：`iris_memory/core/components.py`
 
 5. **热重启策略**
    - 重启时清空内存中的 L1 缓冲

@@ -36,12 +36,11 @@ class SystemStatus:
     
     Examples:
         >>> status = SystemStatus()
-        >>> status.register_module("l1", True)   # L1 默认可用
-        >>> status.register_module("l2", False)
-        >>> status.set_available("l2")
+        >>> status.register_module("l2_memory", False)
+        >>> status.set_available("l2_memory")
         >>> status.get_available_modules()
-        ['l1', 'l2']
-        >>> status.is_module_available("l2")
+        ['l2_memory']
+        >>> status.is_module_available("l2_memory")
         True
     """
     
@@ -294,7 +293,6 @@ class ComponentManager:
         Notes:
             - 使用 asyncio.Lock 保护初始化过程
             - 每个组件的初始化错误会被捕获并记录
-            - 全部组件失败时，仅 L1 可用
         """
         async with self._lock:
             if self._initialized:
