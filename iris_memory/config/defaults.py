@@ -37,9 +37,11 @@ class L2MemoryConfig:
 class L3KGConfig:
     """L3 知识图谱配置"""
     enable: bool = True
-    max_nodes: int = 10000
-    max_edges: int = 30000
+    max_nodes: int = 50000
+    max_edges: int = 100000
     timeout_ms: int = 1500
+    expansion_depth: int = 2
+    enable_type_whitelist: bool = True
 
 
 @dataclass
@@ -103,6 +105,15 @@ class HiddenConfig:
     # 性能调优
     chromadb_batch_size: int = 100          # ChromaDB 批量写入大小
     kuzu_query_timeout_ms: int = 5000       # KuzuDB 查询超时
+    
+    # L3 知识图谱参数
+    entity_extraction_temperature: float = 0.3     # 实体提取温度
+    type_merge_threshold: float = 0.8              # 类型合并相似度阈值
+    node_confidence_threshold: float = 0.3         # 节点最低置信度
+    edge_weight_decay_rate: float = 0.01           # 边权重衰减率
+    forgetting_lambda_kg: float = 0.01             # 知识图谱遗忘系数
+    forgetting_threshold_kg: float = 0.2           # 知识图谱遗忘阈值
+    kg_retention_days: int = 30                    # 知识图谱保留天数
 
 
 @dataclass
