@@ -7,7 +7,6 @@ from typing import Optional, Tuple
 
 from iris_memory.config import get_config
 from iris_memory.core import get_logger, ComponentManager, Component
-from iris_memory.l1_buffer import L1Buffer
 
 logger = get_logger("lifecycle")
 
@@ -25,12 +24,25 @@ def create_components() -> Tuple[Component, ...]:
     
     # 阶段2: L1 消息缓冲
     if config.get("l1_buffer.enable"):
+        from iris_memory.l1_buffer import L1Buffer
         components.append(L1Buffer())
         logger.debug("已添加 L1Buffer 组件")
     
+    # 阶段3: L2 记忆库
+    if config.get("l2_memory.enable"):
+        # 延迟导入，避免循环依赖
+        from iris_memory.l2_memory import L2MemoryAdapter
+        # TODO: 支持人格隔离时，从配置读取 persona_id
+        components.append(L2MemoryAdapter(persona_id="default"))
+        logger.debug("已添加 L2MemoryAdapter 组件")
+    
+    # 阶段4: L3 知识图谱
+    if config.get("l3_kg.enable"):
+        from iris_memory.l3_kg import L3KGAdapter
+        components.append(L3KGAdapter())
+        logger.debug("已添加 L3KGAdapter 组件")
+    
     # TODO: 后续阶段添加更多组件
-    # 阶段3: ChromaDB 适配器
-    # 阶段4: KuzuDB 适配器
     # 阶段5: LLM 管理器
     # 阶段6: 定时任务调度器
     # 阶段9: 画像存储

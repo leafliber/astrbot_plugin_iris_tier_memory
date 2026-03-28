@@ -1,0 +1,488 @@
+"""
+Iris Tier Memory - L2 记忆库 ChromaDB 适配器
+
+实现 L2 记忆库的存储和检索功能，支持：
+- ChromaDB 向量存储
+- 群聊隔离检索
+- 人格隔离（collection 命名空间）
+- 去重检查
+- 超时保护
+- 自动降级
+"""
+
+import asyncio
+from datetime import datetime
+from typing import Optional, List, Dict, Any
+from pathlib import Path
+import uuid
+
+from iris_memory.core import Component, get_logger
+from iris_memory.config import get_config
+from .models import MemoryEntry, MemorySearchResult
+
+logger = get_logger("l2_memory.adapter")
+
+# ChromaDB 导入（延迟导入以支持降级）
+_chromadb = None
+_embedding_functions = None
+
+
+def _ensure_chromadb():
+    """确保 ChromaDB 可用
+    
+    延迟导入 ChromaDB，支持降级模式。
+    
+    Raises:
+        ImportError: ChromaDB 未安装
+    """
+    global _chromadb, _embedding_functions
+    if _chromadb is None:
+        try:
+            import chromadb
+            from chromadb.utils import embedding_functions
+            _chromadb = chromadb
+            _embedding_functions = embedding_functions
+        except ImportError as e:
+            logger.error(f"ChromaDB 未安装：{e}")
+            raise
+
+
+class L2MemoryAdapter(Component):
+    """L2 记忆库适配器
+    
+    使用 ChromaDB 存储和检索记忆向量。
+    
+    Features:
+        - 群聊隔离：通过 metadata 中的 group_id 筛选
+        - 人格隔离：使用人格 ID 作为 collection 名称
+        - 去重检查：写入前检查相似度
+        - 超时保护：检索超时后返回空列表
+        - 自动降级：初始化失败时禁用模块
+    
+    Attributes:
+        _client: ChromaDB 客户端
+        _collection: 当前使用的 collection
+        _embedding_func: 嵌入函数
+        _persist_dir: 数据持久化目录
+        _persona_id: 当前人格 ID
+    """
+    
+    def __init__(self, persona_id: str = "default"):
+        """初始化适配器
+        
+        Args:
+            persona_id: 人格 ID，用于隔离不同人格的记忆
+        """
+        super().__init__()
+        self._client = None
+        self._collection = None
+        self._embedding_func = None
+        self._persist_dir: Optional[Path] = None
+        self._persona_id = persona_id
+        self._similarity_threshold = 0.95  # 去重相似度阈值
+    
+    @property
+    def name(self) -> str:
+        """组件名称
+        
+        Returns:
+            "l2_memory"
+        """
+        return "l2_memory"
+    
+    async def initialize(self) -> None:
+        """初始化适配器
+        
+        创建 ChromaDB 客户端和 collection。
+        如果初始化失败，设置 _is_available = False。
+        """
+        config = get_config()
+        
+        # 检查是否启用
+        if not config.get("l2_memory.enable"):
+            logger.info("L2 记忆库未启用，跳过初始化")
+            self._is_available = False
+            self._init_error = "L2 记忆库未启用"
+            return
+        
+        try:
+            # 延迟导入 ChromaDB
+            _ensure_chromadb()
+            
+            # 设置持久化目录
+            self._persist_dir = config.data_dir / "chromadb"
+            self._persist_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 创建客户端（在线程池中执行）
+            loop = asyncio.get_event_loop()
+            self._client = await loop.run_in_executor(
+                None,
+                self._create_client
+            )
+            
+            # 创建嵌入函数（使用默认的 all-MiniLM-L6-v2）
+            self._embedding_func = _embedding_functions.DefaultEmbeddingFunction()
+            
+            # 获取或创建 collection
+            collection_name = f"memory_{self._persona_id}"
+            self._collection = await loop.run_in_executor(
+                None,
+                lambda: self._client.get_or_create_collection(
+                    name=collection_name,
+                    metadata={"persona_id": self._persona_id}
+                )
+            )
+            
+            self._is_available = True
+            logger.info(
+                f"L2 记忆库初始化成功，collection: {collection_name}，"
+                f"当前条目数: {self._collection.count()}"
+            )
+            
+        except Exception as e:
+            error_msg = f"L2 记忆库初始化失败：{e}"
+            logger.error(error_msg, exc_info=True)
+            self._is_available = False
+            self._init_error = error_msg
+    
+    def _create_client(self):
+        """创建 ChromaDB 客户端（同步方法）
+        
+        Returns:
+            ChromaDB 客户端实例
+        """
+        return _chromadb.PersistentClient(path=str(self._persist_dir))
+    
+    async def shutdown(self) -> None:
+        """关闭适配器
+        
+        清理资源。
+        """
+        self._client = None
+        self._collection = None
+        self._embedding_func = None
+        self._is_available = False
+        logger.info("L2 记忆库已关闭")
+    
+    # ========================================================================
+    # 记忆存储
+    # ========================================================================
+    
+    async def add_memory(
+        self,
+        content: str,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Optional[str]:
+        """添加记忆到库中
+        
+        包含去重检查，相似度超过阈值则跳过。
+        
+        Args:
+            content: 记忆内容
+            metadata: 元数据（group_id、user_id 等）
+        
+        Returns:
+            记忆 ID，跳过时返回已有记忆的 ID
+        
+        Examples:
+            >>> await adapter.add_memory(
+            ...     "用户喜欢吃苹果",
+            ...     metadata={"group_id": "group_123"}
+            ... )
+            "mem_abc123"
+        """
+        if not self._is_available:
+            logger.warning("L2 记忆库不可用，跳过添加记忆")
+            return None
+        
+        # 准备元数据
+        if metadata is None:
+            metadata = {}
+        
+        # 确保必要字段
+        if "timestamp" not in metadata:
+            metadata["timestamp"] = datetime.now().isoformat()
+        if "access_count" not in metadata:
+            metadata["access_count"] = 0
+        if "confidence" not in metadata:
+            metadata["confidence"] = 0.5
+        
+        try:
+            # 去重检查
+            existing_id = await self._check_similarity(content)
+            if existing_id:
+                logger.debug(f"发现相似记忆，跳过存储：{content[:50]}...")
+                return existing_id
+            
+            # 生成记忆 ID
+            memory_id = f"mem_{uuid.uuid4().hex[:12]}"
+            
+            # 存储到 ChromaDB（在线程池中执行）
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: self._collection.add(
+                    ids=[memory_id],
+                    documents=[content],
+                    metadatas=[metadata]
+                )
+            )
+            
+            logger.debug(f"已添加记忆：{memory_id}")
+            return memory_id
+            
+        except Exception as e:
+            logger.error(f"添加记忆失败：{e}", exc_info=True)
+            return None
+    
+    async def _check_similarity(self, content: str) -> Optional[str]:
+        """检查相似记忆
+        
+        检索最相似的记忆，如果相似度超过阈值则返回其 ID。
+        
+        Args:
+            content: 待检查的内容
+        
+        Returns:
+            相似记忆的 ID，不存在时返回 None
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            
+            # 检索最相似的 1 条记忆
+            results = await loop.run_in_executor(
+                None,
+                lambda: self._collection.query(
+                    query_texts=[content],
+                    n_results=1
+                )
+            )
+            
+            # 检查距离
+            if results["distances"] and results["distances"][0]:
+                distance = results["distances"][0][0]
+                # ChromaDB 使用距离而非相似度，距离越小越相似
+                # 假设距离 < 0.1 表示相似度 > 0.95
+                if distance < (1 - self._similarity_threshold):
+                    return results["ids"][0][0]
+            
+            return None
+            
+        except Exception as e:
+            logger.warning(f"相似度检查失败：{e}")
+            return None
+    
+    # ========================================================================
+    # 记忆检索
+    # ========================================================================
+    
+    async def retrieve(
+        self,
+        query: str,
+        group_id: Optional[str] = None,
+        top_k: int = 10
+    ) -> List[MemorySearchResult]:
+        """检索记忆
+        
+        根据查询文本检索相似记忆，支持群聊隔离筛选。
+        设置超时保护，超时后返回空列表。
+        
+        Args:
+            query: 查询文本
+            group_id: 群聊 ID（可选，用于隔离检索）
+            top_k: 返回数量
+        
+        Returns:
+            检索结果列表，超时或失败时返回空列表
+        
+        Examples:
+            >>> results = await adapter.retrieve(
+            ...     "喜欢吃什么",
+            ...     group_id="group_123",
+            ...     top_k=5
+            ... )
+            >>> len(results)
+            5
+        """
+        if not self._is_available:
+            return []
+        
+        config = get_config()
+        timeout_ms = config.get("l2_memory.timeout_ms")
+        timeout_sec = timeout_ms / 1000.0
+        
+        try:
+            # 设置超时保护
+            loop = asyncio.get_event_loop()
+            results = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    lambda: self._search(query, group_id, top_k)
+                ),
+                timeout=timeout_sec
+            )
+            return results
+            
+        except asyncio.TimeoutError:
+            logger.warning(f"L2 记忆检索超时（{timeout_sec}s），跳过")
+            return []
+        except Exception as e:
+            logger.error(f"L2 记忆检索失败：{e}", exc_info=True)
+            return []
+    
+    def _search(
+        self,
+        query: str,
+        group_id: Optional[str],
+        top_k: int
+    ) -> List[MemorySearchResult]:
+        """执行检索（同步方法）
+        
+        Args:
+            query: 查询文本
+            group_id: 群聊 ID
+            top_k: 返回数量
+        
+        Returns:
+            检索结果列表
+        """
+        # 准备查询参数
+        query_params = {
+            "query_texts": [query],
+            "n_results": top_k
+        }
+        
+        # 群聊隔离筛选
+        if group_id:
+            query_params["where"] = {"group_id": group_id}
+        
+        # 执行查询
+        results = self._collection.query(**query_params)
+        
+        # 转换结果
+        search_results = []
+        if results["ids"] and results["ids"][0]:
+            for i, memory_id in enumerate(results["ids"][0]):
+                entry = MemoryEntry(
+                    id=memory_id,
+                    content=results["documents"][0][i],
+                    metadata=results["metadatas"][0][i] if results["metadatas"] else {},
+                    embedding=results["embeddings"][0][i] if results.get("embeddings") else None
+                )
+                
+                # 计算相似度分数（距离越小分数越高）
+                distance = results["distances"][0][i] if results["distances"] else 0.0
+                score = max(0.0, 1.0 - distance)
+                
+                search_results.append(MemorySearchResult(
+                    entry=entry,
+                    score=score,
+                    distance=distance
+                ))
+        
+        return search_results
+    
+    # ========================================================================
+    # 访问更新
+    # ========================================================================
+    
+    async def update_access(self, memory_id: str) -> bool:
+        """更新记忆的访问信息
+        
+        增加访问次数并更新最近访问时间。
+        
+        Args:
+            memory_id: 记忆 ID
+        
+        Returns:
+            是否更新成功
+        
+        Note:
+            ChromaDB 不支持直接更新 metadata，需要先删除再添加。
+            此方法暂时不实现，在阶段 6 定时任务中统一处理。
+        """
+        if not self._is_available:
+            return False
+        
+        # TODO: 阶段 6 实现访问更新
+        # ChromaDB 需要先查询、修改 metadata、删除旧记录、添加新记录
+        logger.debug(f"访问更新暂未实现：{memory_id}")
+        return True
+    
+    # ========================================================================
+    # 容量管理
+    # ========================================================================
+    
+    async def get_entry_count(self) -> int:
+        """获取当前记忆条目数
+        
+        Returns:
+            记忆条目数量
+        """
+        if not self._is_available or not self._collection:
+            return 0
+        
+        try:
+            return self._collection.count()
+        except Exception as e:
+            logger.error(f"获取条目数失败：{e}")
+            return 0
+    
+    async def get_all_entries(self) -> List[MemoryEntry]:
+        """获取所有记忆条目
+        
+        用于遗忘淘汰任务。
+        
+        Returns:
+            所有记忆条目列表
+        """
+        if not self._is_available or not self._collection:
+            return []
+        
+        try:
+            loop = asyncio.get_event_loop()
+            results = await loop.run_in_executor(
+                None,
+                lambda: self._collection.get()
+            )
+            
+            entries = []
+            if results["ids"]:
+                for i, memory_id in enumerate(results["ids"]):
+                    entries.append(MemoryEntry(
+                        id=memory_id,
+                        content=results["documents"][i],
+                        metadata=results["metadatas"][i] if results["metadatas"] else {}
+                    ))
+            
+            return entries
+            
+        except Exception as e:
+            logger.error(f"获取所有条目失败：{e}")
+            return []
+    
+    async def delete_entries(self, memory_ids: List[str]) -> bool:
+        """批量删除记忆条目
+        
+        Args:
+            memory_ids: 要删除的记忆 ID 列表
+        
+        Returns:
+            是否删除成功
+        """
+        if not self._is_available or not memory_ids:
+            return False
+        
+        try:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: self._collection.delete(ids=memory_ids)
+            )
+            
+            logger.info(f"已删除 {len(memory_ids)} 条记忆")
+            return True
+            
+        except Exception as e:
+            logger.error(f"删除记忆失败：{e}", exc_info=True)
+            return False

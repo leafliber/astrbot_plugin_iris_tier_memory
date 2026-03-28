@@ -1,0 +1,43 @@
+"""
+Iris Tier Memory - L2 记忆库模块
+
+使用 ChromaDB 存储长期记忆向量，支持群聊隔离、人格隔离、降级兜底。
+"""
+
+from .models import MemoryEntry, MemorySearchResult
+from .adapter import L2MemoryAdapter
+from .retriever import MemoryRetriever
+from .fallback import FallbackRetriever, check_chromadb_available, create_fallback_handler
+from .io import (
+    MemoryExporter,
+    MemoryImporter,
+    ExportStats,
+    ImportStats,
+    MemoryExport,
+    export_memories,
+    import_memories,
+)
+
+__all__ = [
+    # 数据模型
+    "MemoryEntry",
+    "MemorySearchResult",
+    
+    # 核心组件
+    "L2MemoryAdapter",
+    "MemoryRetriever",
+    
+    # 降级处理
+    "FallbackRetriever",
+    "check_chromadb_available",
+    "create_fallback_handler",
+    
+    # 导入导出
+    "MemoryExporter",
+    "MemoryImporter",
+    "ExportStats",
+    "ImportStats",
+    "MemoryExport",
+    "export_memories",
+    "import_memories",
+]
