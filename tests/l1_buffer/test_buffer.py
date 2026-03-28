@@ -1,0 +1,256 @@
+"""L1 缓冲组件测试"""
+
+import pytest
+from pathlib import Path
+from unittest.mock import Mock, patch, AsyncMock
+from datetime import datetime
+
+from iris_memory.l1_buffer import L1Buffer, ContextMessage
+from iris_memory.config import init_config
+
+
+@pytest.fixture
+def mock_config(tmp_path: Path):
+    """模拟配置"""
+    astrbot_config = Mock()
+    astrbot_config.__getitem__ = Mock(return_value={
+        "enable": True,
+        "summary_provider": "",
+        "inject_queue_length": 20,
+        "max_queue_tokens": 4000,
+        "max_single_message_tokens": 500
+    })
+    astrbot_config.__contains__ = Mock(return_value=True)
+    
+    return init_config(astrbot_config, tmp_path)
+
+
+class TestL1Buffer:
+    """L1 缓冲组件测试"""
+    
+    @pytest.mark.asyncio
+    async def test_initialize_success(self, mock_config):
+        """测试初始化成功"""
+        buffer = L1Buffer()
+        
+        await buffer.initialize()
+        
+        assert buffer.is_available
+        assert buffer.name == "l1_buffer"
+    
+    @pytest.mark.asyncio
+    async def test_initialize_disabled(self, mock_config):
+        """测试禁用状态初始化"""
+        with patch('iris_memory.l1_buffer.buffer.get_config') as mock_get_config:
+            mock_get_config.return_value.get = Mock(side_effect=lambda key: {
+                "l1_buffer.enable": False
+            }.get(key, None))
+            
+            buffer = L1Buffer()
+            await buffer.initialize()
+            
+            assert not buffer.is_available
+    
+    @pytest.mark.asyncio
+    async def test_shutdown(self, mock_config):
+        """测试关闭"""
+        buffer = L1Buffer()
+        await buffer.initialize()
+        
+        # 添加一些消息
+        await buffer.add_message("group_123", "user", "测试", "user_456")
+        
+        await buffer.shutdown()
+        
+        assert not buffer.is_available
+        assert len(buffer._queues) == 0
+    
+    @pytest.mark.asyncio
+    async def test_add_message_success(self, mock_config):
+        """测试添加消息成功"""
+        buffer = L1Buffer()
+        await buffer.initialize()
+        
+        success = await buffer.add_message(
+            group_id="group_123",
+            role="user",
+            content="你好",
+            source="user_456"
+        )
+        
+        assert success
+        
+        context = buffer.get_context("group_123")
+        assert len(context) == 1
+        assert context[0].content == "你好"
+    
+    @pytest.mark.asyncio
+    async def test_add_message_too_large(self, mock_config):
+        """测试添加超大消息"""
+        with patch('iris_memory.l1_buffer.buffer.get_config') as mock_get_config:
+            mock_get_config.return_value.get = Mock(side_effect=lambda key: {
+                "l1_buffer.enable": True,
+                "l1_buffer.max_single_message_tokens": 10
+            }.get(key, None))
+            
+            buffer = L1Buffer()
+            await buffer.initialize()
+            
+            # 创建一个超过限制的消息
+            large_content = "这是一条很长的消息" * 100
+            
+            success = await buffer.add_message(
+                group_id="group_123",
+                role="user",
+                content=large_content,
+                source="user_456"
+            )
+            
+            assert not success
+            
+            context = buffer.get_context("group_123")
+            assert len(context) == 0
+    
+    @pytest.mark.asyncio
+    async def test_add_message_disabled(self, mock_config):
+        """测试禁用时添加消息"""
+        with patch('iris_memory.l1_buffer.buffer.get_config') as mock_get_config:
+            mock_get_config.return_value.get = Mock(side_effect=lambda key: {
+                "l1_buffer.enable": False
+            }.get(key, None))
+            
+            buffer = L1Buffer()
+            await buffer.initialize()
+            
+            success = await buffer.add_message(
+                group_id="group_123",
+                role="user",
+                content="测试",
+                source="user_456"
+            )
+            
+            assert not success
+    
+    @pytest.mark.asyncio
+    async def test_get_context_with_limit(self, mock_config):
+        """测试获取有限制的上下文"""
+        buffer = L1Buffer()
+        await buffer.initialize()
+        
+        # 添加 10 条消息
+        for i in range(10):
+            await buffer.add_message(
+                group_id="group_123",
+                role="user",
+                content=f"消息{i}",
+                source="user_456"
+            )
+        
+        # 获取最近 5 条
+        context = buffer.get_context("group_123", max_length=5)
+        
+        assert len(context) == 5
+        assert context[0].content == "消息5"
+        assert context[4].content == "消息9"
+    
+    @pytest.mark.asyncio
+    async def test_clear_context(self, mock_config):
+        """测试清空指定队列"""
+        buffer = L1Buffer()
+        await buffer.initialize()
+        
+        # 添加消息
+        await buffer.add_message("group_123", "user", "测试", "user_456")
+        
+        buffer.clear_context("group_123")
+        
+        context = buffer.get_context("group_123")
+        assert len(context) == 0
+    
+    @pytest.mark.asyncio
+    async def test_clear_all(self, mock_config):
+        """测试清空所有队列"""
+        buffer = L1Buffer()
+        await buffer.initialize()
+        
+        # 添加消息到多个队列
+        await buffer.add_message("group_123", "user", "测试1", "user_456")
+        await buffer.add_message("group_456", "user", "测试2", "user_789")
+        
+        buffer.clear_all()
+        
+        assert len(buffer._queues) == 0
+    
+    @pytest.mark.asyncio
+    async def test_group_isolation_enabled(self, mock_config):
+        """测试群聊隔离开启"""
+        with patch('iris_memory.l1_buffer.buffer.get_config') as mock_get_config:
+            mock_get_config.return_value.get = Mock(side_effect=lambda key: {
+                "l1_buffer.enable": True,
+                "isolation_config.enable_group_memory_isolation": True
+            }.get(key, None))
+            
+            buffer = L1Buffer()
+            await buffer.initialize()
+            
+            # 添加消息到不同群聊
+            await buffer.add_message("group_123", "user", "测试1", "user_456")
+            await buffer.add_message("group_456", "user", "测试2", "user_789")
+            
+            # 应该有两个独立的队列
+            assert len(buffer._queues) == 2
+            
+            # 各队列独立
+            context1 = buffer.get_context("group_123")
+            context2 = buffer.get_context("group_456")
+            
+            assert len(context1) == 1
+            assert len(context2) == 1
+    
+    @pytest.mark.asyncio
+    async def test_group_isolation_disabled(self, mock_config):
+        """测试群聊隔离关闭"""
+        with patch('iris_memory.l1_buffer.buffer.get_config') as mock_get_config:
+            mock_get_config.return_value.get = Mock(side_effect=lambda key: {
+                "l1_buffer.enable": True,
+                "isolation_config.enable_group_memory_isolation": False
+            }.get(key, None))
+            
+            buffer = L1Buffer()
+            await buffer.initialize()
+            
+            # 添加消息到不同群聊
+            await buffer.add_message("group_123", "user", "测试1", "user_456")
+            await buffer.add_message("group_456", "user", "测试2", "user_789")
+            
+            # 应该只有一个全局队列
+            assert len(buffer._queues) == 1
+            
+            # 所有消息共享
+            context = buffer.get_context("group_123")
+            assert len(context) == 2
+    
+    @pytest.mark.asyncio
+    async def test_get_queue_stats(self, mock_config):
+        """测试获取队列统计"""
+        buffer = L1Buffer()
+        await buffer.initialize()
+        
+        # 添加消息
+        await buffer.add_message("group_123", "user", "测试", "user_456")
+        
+        stats = buffer.get_queue_stats("group_123")
+        
+        assert stats is not None
+        assert stats["message_count"] == 1
+        assert stats["total_tokens"] > 0
+    
+    @pytest.mark.asyncio
+    async def test_get_queue_stats_nonexistent(self, mock_config):
+        """测试获取不存在的队列统计"""
+        buffer = L1Buffer()
+        await buffer.initialize()
+        
+        stats = buffer.get_queue_stats("nonexistent_group")
+        
+        assert stats is None
