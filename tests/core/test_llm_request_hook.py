@@ -1,9 +1,9 @@
-"""测试 LLM 对话前处理模块"""
+"""测试 LLM 请求钩子处理模块"""
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime
 
-from iris_memory.core.preprocessor import preprocess_llm_request
+from iris_memory.core.llm_request_hook import preprocess_llm_request
 
 
 class TestPreprocessLLMRequest:
@@ -49,7 +49,7 @@ class TestPreprocessLLMRequest:
         adapter = MagicMock()
         adapter.get_group_id.return_value = "group123"
         
-        with patch('iris_memory.core.preprocessor.get_adapter', return_value=adapter):
+        with patch('iris_memory.core.llm_request_hook.get_adapter', return_value=adapter):
             await preprocess_llm_request(event, req, component_manager)
         
         # 验证调用了 get_context
@@ -96,7 +96,7 @@ class TestPreprocessLLMRequest:
         adapter = MagicMock()
         adapter.get_group_id.return_value = "group123"
         
-        with patch('iris_memory.core.preprocessor.get_adapter', return_value=adapter):
+        with patch('iris_memory.core.llm_request_hook.get_adapter', return_value=adapter):
             await preprocess_llm_request(event, req, component_manager)
         
         # 不应该注入任何内容
@@ -130,7 +130,7 @@ class TestPreprocessLLMRequest:
         adapter = MagicMock()
         adapter.get_group_id.return_value = "group123"
         
-        with patch('iris_memory.core.preprocessor.get_adapter', return_value=adapter):
+        with patch('iris_memory.core.llm_request_hook.get_adapter', return_value=adapter):
             await preprocess_llm_request(event, req, component_manager)
         
         # 应该在开头插入 L1 消息

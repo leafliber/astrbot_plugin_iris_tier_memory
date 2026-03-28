@@ -1,11 +1,10 @@
 """
-消息处理模块
+消息钩子处理模块
 
-负责处理所有用户发送的消息，包括：
+负责处理用户发送的消息钩子，包括：
 - 添加用户消息到 L1 Buffer（当前实现）
 - 用户画像更新（未来扩展）
 - 关键词检测（未来扩展）
-- 其他消息处理逻辑
 """
 from typing import TYPE_CHECKING, cast
 
@@ -17,20 +16,19 @@ if TYPE_CHECKING:
     from iris_memory.core.components import ComponentManager
     from iris_memory.l1_buffer import L1Buffer
 
-logger = get_logger("message_handler")
+logger = get_logger("message_hook")
 
 
 async def handle_user_message(
     event: "AstrMessageEvent",
     component_manager: "ComponentManager"
 ) -> None:
-    """处理用户消息主入口
+    """处理用户消息钩子
     
     执行所有用户消息的处理逻辑（按顺序执行）：
     1. 添加用户消息到 L1 Buffer
     2. TODO: 用户画像更新（阶段 9）
-    3. TODO: 关键词检测
-    4. TODO: 其他消息处理逻辑
+    3. TODO: 关键词检测（阶段 7）
     
     Args:
         event: AstrBot 消息事件对象

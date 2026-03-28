@@ -1,8 +1,8 @@
-"""测试消息处理模块"""
+"""测试消息钩子处理模块"""
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from iris_memory.core.message_handler import handle_user_message, update_l1_buffer
+from iris_memory.core.message_hook import handle_user_message, update_l1_buffer
 
 
 class TestHandleUserMessage:
@@ -29,7 +29,7 @@ class TestHandleUserMessage:
         adapter.get_group_id.return_value = "group123"
         adapter.get_user_id.return_value = "user456"
         
-        with patch('iris_memory.core.message_handler.get_adapter', return_value=adapter):
+        with patch('iris_memory.core.message_hook.get_adapter', return_value=adapter):
             await handle_user_message(event, component_manager)
         
         # 验证调用了 add_message
@@ -115,7 +115,7 @@ class TestUpdateL1Buffer:
         adapter.get_group_id.return_value = "group123"
         adapter.get_user_id.return_value = "user456"
         
-        with patch('iris_memory.core.message_handler.get_adapter', return_value=adapter):
+        with patch('iris_memory.core.message_hook.get_adapter', return_value=adapter):
             await update_l1_buffer(event, component_manager, "user", "你好")
         
         # 验证调用了 add_message
@@ -142,7 +142,7 @@ class TestUpdateL1Buffer:
         adapter.get_group_id.return_value = "group123"
         adapter.get_user_id.return_value = "user456"
         
-        with patch('iris_memory.core.message_handler.get_adapter', return_value=adapter):
+        with patch('iris_memory.core.message_hook.get_adapter', return_value=adapter):
             await update_l1_buffer(event, component_manager, "assistant", "你好！")
         
         # 验证调用了 add_message

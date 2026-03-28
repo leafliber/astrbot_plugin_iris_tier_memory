@@ -9,7 +9,7 @@ from iris_memory.config import get_config
 from iris_memory.core import get_logger, ComponentManager, Component
 from iris_memory.l1_buffer import L1Buffer
 
-logger = get_logger("plugin_lifecycle")
+logger = get_logger("lifecycle")
 
 
 def create_components() -> Tuple[Component, ...]:

@@ -61,6 +61,12 @@
    - `SystemStatus` 状态追踪
    - 故障隔离、动态模块注册
 
+6. **钩子处理模块** (`iris_memory/core/`)
+   - `message_hook.py` - 消息钩子处理（用户消息入队）
+   - `llm_request_hook.py` - LLM请求钩子处理（上下文注入）
+   - `llm_response_hook.py` - LLM响应钩子处理（助手响应入队）
+   - `lifecycle.py` - 插件生命周期管理（组件创建、初始化、关闭）
+
 **测试覆盖**：
 - 43 个测试用例，覆盖所有模块
 - 测试目录按业务逻辑组织：`tests/config/`、`tests/core/`、`tests/platform/`
@@ -70,7 +76,9 @@
 iris_memory/
 ├── config/          # 配置系统
 ├── platform/        # 平台适配器
-└── core/            # 核心工具（日志、组件管理器）
+├── core/            # 核心工具（日志、组件管理器、钩子处理、生命周期管理）
+├── l1_buffer/       # L1 缓冲模块
+├── utils/           # 公共工具（Token计数）
 main.py              # 插件入口
 metadata.yaml        # 插件元数据
 _conf_schema.json    # 配置 Schema
@@ -79,88 +87,21 @@ requirements.txt     # 依赖清单
 
 ---
 
-## 阶段 2：L1 消息上下文缓冲
+## 阶段 2：L1 消息上下文缓冲 ✅ **已完成**
 
 **目标**：消息可按群聊入队，队列满时触发自动总结，总结结果可写入 L2 记忆库（若已初始化）。
 
-**前置依赖**：
-- ✅ 阶段1：配置系统、组件管理器、日志系统
-
-**实现步骤**：
-
-1. **实现公共工具** (`iris_memory/utils/token_counter.py`)
-   - 使用 `tiktoken` 实现 Token 计数（默认 `cl100k_base` 编码）
-   - 封装 `count_tokens(text: str) -> int` 函数
-   - 作为公共工具供 L1/L2 使用
-
-2. **创建 L1 缓冲模块** (`iris_memory/l1_buffer/`)
-   - `models.py`：定义数据结构
-     - `ContextMessage`：消息数据类（role、content、timestamp、token_count、source）
-     - `MessageQueue`：队列数据类（group_id、messages、max_length、max_tokens）
-   
-   - `buffer.py`：L1 缓冲组件
-     - 定义 `L1Buffer` 类，继承 `Component`
-     - 使用配置系统：`config.get("l1_buffer.max_queue_tokens")`
-     - 使用日志系统：`get_logger("l1_buffer")`
-     - 实现队列管理：`add_message()`、`get_context()`、`clear_context()`
-     - 注册为 `l1_buffer` 模块
-   
-   - `summarizer.py`：总结器
-     - 定义 `Summarizer` 类（依赖 LLM 接口，阶段5实现）
-     - 实现总结触发条件判断
-     - 使用配置的 `summary_provider`
-
-3. **集成 AstrBot 钩子** (`main.py`)
-   - 使用 `@filter.on_llm_request()` 注入队列消息到上下文
-   - 使用 `@filter.on_llm_response()` 更新队列
-   - 在 `_ensure_initialized()` 中创建 `L1Buffer()` 组件
-
-4. **创建消息处理模块** (`iris_memory/core/message_handler.py`) ✅
-   - 实现消息处理器 `handle_user_message()`
-   - 使用 `@filter.event_message_type(ALL)` 捕获所有用户消息
-   - 将用户消息添加到 L1 Buffer
-   - 预留未来处理逻辑扩展点（画像更新、关键词检测等）
-
-5. **重构对话前处理模块** (`iris_memory/core/preprocessor.py`) ✅
-   - 专注于 LLM 对话前处理逻辑
-   - 实现 L1 上下文注入 `preprocess_llm_request()`
-   - 移除消息更新逻辑（已迁移到 message_handler）
-   - 预留未来预处理扩展点（画像注入、知识图谱检索等）
-
-6. **调整钩子逻辑** (`main.py`) ✅
-   - 新增 `on_all_message()` 钩子：捕获所有用户消息（包括不触发 LLM 的）
-   - 调整 `on_llm_response()` 钩子：只添加助手响应，避免重复添加用户消息
-   - 确保消息流：用户消息 → on_all_message → L1 Buffer
-
-**完成标志**：
-- ✅ 消息可按群聊入队，日志显示入队信息
-- ⏳ 队列满时触发总结，日志显示总结结果（待阶段 5 实现）
-- ✅ LLM 请求时上下文包含队列消息
-- ✅ 所有用户消息（包括不触发 LLM 的）都被添加到 L1 Buffer
-- ✅ 消息处理器和对话前处理器分离，架构清晰
+**完成状态**：
+- ✅ 所有核心功能已实现
+- ⏳ 总结功能待阶段 5 的 LLMManager 实现后激活
 
 **阶段产物**：
-```
-iris_memory/
-├── l1_buffer/              # L1 缓冲模块
-│   ├── __init__.py
-│   ├── models.py           # 消息数据结构
-│   ├── buffer.py           # L1 缓冲组件
-│   └── summarizer.py       # 总结器
-├── core/                   # 核心模块
-│   ├── preprocessor.py     # LLM 对话前处理器 ✅
-│   └── message_handler.py  # 消息处理器 ✅
-└── utils/                  # 公共工具
-    └── token_counter.py    # Token 计数工具
-```
+- ✅ `iris_memory/l1_buffer/` - L1 缓冲模块（models、buffer、summarizer）
+- ✅ `iris_memory/core/` - 钩子处理模块（message_hook、llm_request_hook、llm_response_hook、lifecycle）
+- ✅ `iris_memory/utils/token_counter.py` - Token 计数工具
+- ✅ 测试覆盖：11 个测试通过
 
-**测试要求**：
-- `tests/l1_buffer/test_buffer.py`：L1 缓冲组件测试
-- `tests/l1_buffer/test_models.py`：数据结构测试
-- `tests/l1_buffer/test_summarizer.py`：总结器测试
-- `tests/utils/test_token_counter.py`：Token 计数测试
-- ✅ `tests/core/test_preprocessor.py`：对话前处理器测试（4 个测试通过）
-- ✅ `tests/core/test_message_handler.py`：消息处理器测试（7 个测试通过）
+**详细文档**：见阶段 2 完成报告（已归档）
 
 ---
 
@@ -172,37 +113,103 @@ iris_memory/
 - ✅ 阶段1：配置系统、组件管理器、日志系统
 - ✅ 阶段2：L1 缓冲组件
 
+**核心设计要点**：
+
+1. **群聊隔离策略**
+   - 支持群聊ID隔离检索，默认关闭（全局共享记忆）
+   - 隔离与否均为合理使用场景，由用户根据部署需求选择
+   - 隔离开启：使用群聊ID作为检索筛选条件
+   - 隔离关闭：不使用群聊ID筛选，全局共享记忆
+   - 总是记录群聊ID到记忆元数据（支持未来切换隔离策略）
+
+2. **人格隔离支持**
+   - 支持人格隔离配置（第一层索引）
+   - 开启时：使用人格ID作为ChromaDB collection命名空间
+   - 关闭时：使用"default"作为collection命名空间
+   - 切换原子性：人格切换时同步切换collection，刷新缓存
+
+3. **降级与兜底机制**
+   - **独立降级**：ChromaDB不可用时，仅L2记忆检索降级失效，L1和L3不受影响，主流程继续运行
+   - **冷启动兜底**：新用户/新群聊首次触发检索时，L2无记忆可返回，直接以空记忆集继续处理，不报错；后续随消息总结任务逐步写入记忆
+   - **响应延迟保护**：L2检索设置超时上限（可配置，默认2000ms）；超时后跳过本层结果，直接进入L3或以空集合并，不阻塞主流程
+
+4. **去重与容量管理**
+   - **去重逻辑**：写入前检查相似度，避免重复存储相似记忆
+   - **容量上限**：每个collection设置最大条目数上限（可配置，默认10000条）
+   - **淘汰策略**：超限时按遗忘权重综合评分排序，优先淘汰评分最低的条目
+   - **淘汰时机**：淘汰操作由定时任务统一执行，不在写入路径上触发，避免影响响应延迟
+   - **合并优化**：淘汰前先执行一次合并，尝试将碎片记忆合并后再评估是否超限
+
 **实现步骤**：
 
 1. **创建 L2 记忆模块** (`iris_memory/l2_memory/`)
+   
    - `models.py`：定义数据结构
-     - `MemoryEntry`：记忆数据类（id、content、metadata）
-     - `MemorySearchResult`：检索结果（entry、score）
+     - `MemoryEntry`：记忆数据类（id、content、embedding、metadata）
+       - metadata包含：group_id、timestamp、access_count、last_access_time、confidence
+     - `MemorySearchResult`：检索结果（entry、score、distance）
    
    - `adapter.py`：ChromaDB 适配器
      - 定义 `L2MemoryAdapter` 类，继承 `Component`
      - 注册为 `l2_memory` 模块
-     - 实现数据库连接、记忆存储、检索、去重
-     - 设置超时保护
+     - 实现功能：
+       - 数据库连接与初始化（创建default collection及人格collection框架）
+       - 记忆存储（支持去重检查）
+       - 记忆检索（支持群聊ID筛选、超时保护）
+       - 容量检查与淘汰接口
+       - 访问频率与时间更新
+     - 配置参数：
+       - `persist_dir`：数据存储路径
+       - `max_entries`：每个collection最大条目数（默认10000）
+       - `timeout_ms`：检索超时时间（默认2000ms）
+     - 降级处理：
+       - 初始化失败时设置 `_is_available = False`
+       - 检索时检查可用性，不可用则返回空列表
    
    - `retriever.py`：记忆检索器
      - 定义 `MemoryRetriever` 类
-     - 实现 `retrieve()`、`add_from_summary()`
-     - 支持图增强检索（依赖 L3）
+     - 实现功能：
+       - `retrieve(query, group_id, top_k)`：检索记忆
+       - `add_from_summary(summary_content, metadata)`：从总结写入记忆
+       - `update_access(entry_id)`：更新访问频率和时间
+     - 支持图增强检索（依赖 L3，阶段4实现）
+     - 支持Token预算控制（阶段8实现）
    
    - `fallback.py`：降级与兜底逻辑
      - 初始化失败时设置不可用
      - 检索时返回空列表
+     - 记录降级日志
 
-2. **集成到消息钩子** (`main.py`)
-   - 在 `_ensure_initialized()` 中创建 `L2MemoryAdapter()` 组件
-   - 在 `@filter.on_llm_request()` 中调用检索
-   - 在总结完成后写入记忆
+2. **实现遗忘权重算法** (`iris_memory/utils/forgetting.py`)
+   - 公共工具，供 L2/L3 使用
+   - 计算 R（近因性）、F（频率性）、C（置信度）、D（孤立度）
+   - 加权求和得到遗忘评分：S = w1·R + w2·F + w3·C + w4·(1 - D)
+   - 默认权重：w1=0.3, w2=0.3, w3=0.2, w4=0.2
+   - 得分低于阈值（默认0.2）且距上次访问超过保留期（默认30天）时标记为待淘汰
+
+3. **集成到消息钩子** (`main.py`)
+   - 在 `create_components()` 中创建 `L2MemoryAdapter()` 组件
+   - 在 `on_llm_request()` 中调用记忆检索（注入到上下文）
+   - 在总结完成后调用 `add_from_summary()` 写入记忆
+
+4. **更新配置系统**
+   - 在 `_conf_schema.json` 中添加 L2 配置项：
+     - `l2_memory.enable`：是否启用L2记忆库
+     - `l2_memory.max_entries`：每个collection最大条目数
+     - `l2_memory.timeout_ms`：检索超时时间
+   - 在隐藏配置中添加：
+     - `chromadb_batch_size`：批处理大小
+     - `forgetting_lambda`：遗忘权重算法参数
+     - `forgetting_threshold`：遗忘阈值
+     - `retention_days`：保留期天数
 
 **完成标志**：
-- 总结后可在 ChromaDB 中查到记忆
-- 发送相似问题时，检索结果出现在上下文中
-- ChromaDB 连接断开后，主流程不报错
+- ✅ 总结后可在 ChromaDB 中查到记忆
+- ✅ 发送相似问题时，检索结果出现在上下文中
+- ✅ ChromaDB 连接断开后，主流程不报错，日志显示降级
+- ✅ 新用户/新群聊首次检索返回空结果，不报错
+- ✅ 检索超时后跳过L2结果，不阻塞主流程
+- ✅ 记忆数量超过上限时，定时任务执行淘汰
 
 **阶段产物**：
 ```
@@ -214,12 +221,72 @@ iris_memory/
 │   ├── retriever.py        # 记忆检索器
 │   └── fallback.py         # 降级逻辑
 └── utils/                  # 公共工具（新增）
+    ├── token_counter.py    # Token 计数工具
+    └── forgetting.py       # 遗忘权重算法
 ```
 
 **测试要求**：
-- `tests/l2_memory/test_adapter.py`：适配器测试
-- `tests/l2_memory/test_retriever.py`：检索器测试
+- `tests/l2_memory/test_adapter.py`：适配器测试（初始化、存储、检索、降级）
+- `tests/l2_memory/test_retriever.py`：检索器测试（检索、写入、更新访问）
 - `tests/l2_memory/test_models.py`：数据结构测试
+- `tests/utils/test_forgetting.py`：遗忘算法测试
+
+**关键实现细节**：
+
+1. **ChromaDB 初始化**
+   ```python
+   async def initialize(self):
+       config = get_config()
+       self._persist_dir = config.data_dir / "chromadb"
+       
+       # 检查是否启用
+       if not config.get("l2_memory.enable"):
+           self._is_available = False
+           return
+       
+       # 创建客户端
+       self._client = chromadb.PersistentClient(path=str(self._persist_dir))
+       
+       # 创建default collection
+       self._collection = self._client.get_or_create_collection(
+           name="default",
+           metadata={"description": "Default memory collection"}
+       )
+       
+       self._is_available = True
+   ```
+
+2. **检索超时保护**
+   ```python
+   async def retrieve(self, query: str, group_id: str, top_k: int):
+       if not self._is_available:
+           return []
+       
+       try:
+           # 设置超时
+           timeout = config.get("l2_memory.timeout_ms") / 1000
+           result = await asyncio.wait_for(
+               self._search(query, group_id, top_k),
+               timeout=timeout
+           )
+           return result
+       except asyncio.TimeoutError:
+           logger.warning(f"L2记忆检索超时（{timeout}s），跳过")
+           return []
+   ```
+
+3. **去重检查**
+   ```python
+   async def add_memory(self, content: str, metadata: dict):
+       # 检查相似度
+       existing = await self._check_similarity(content, threshold=0.95)
+       if existing:
+           logger.debug(f"发现相似记忆，跳过存储：{content[:50]}...")
+           return existing.id
+       
+       # 存储新记忆
+       return await self._store(content, metadata)
+   ```
 
 ---
 

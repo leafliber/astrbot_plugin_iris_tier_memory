@@ -6,10 +6,10 @@ Iris Tier Memory - 核心模块
 
 from .logger import get_logger
 from .components import Component, ComponentManager, ComponentInitResult, SystemStatus
-from .preprocessor import preprocess_llm_request
-from .message_handler import handle_user_message, update_l1_buffer
-from .plugin_lifecycle import create_components, initialize_components, shutdown_components
-from .llm_hooks import handle_llm_response
+from .llm_request_hook import preprocess_llm_request
+from .message_hook import handle_user_message, update_l1_buffer
+from .lifecycle import create_components, initialize_components, shutdown_components
+from .llm_response_hook import handle_llm_response
 
 __all__ = [
     "get_logger",

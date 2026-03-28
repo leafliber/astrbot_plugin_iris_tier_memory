@@ -1,11 +1,10 @@
 """
-LLM 对话前处理模块
+LLM 请求钩子处理模块
 
-负责在 LLM 对话前执行各种预处理逻辑，包括：
+负责处理 LLM 请求前的钩子逻辑，包括：
 - L1 上下文注入（当前实现）
 - 用户画像注入（未来扩展）
 - 知识图谱检索结果注入（未来扩展）
-- 其他对话前处理逻辑
 """
 from typing import TYPE_CHECKING, cast
 
@@ -18,7 +17,7 @@ if TYPE_CHECKING:
     from iris_memory.core.components import ComponentManager
     from iris_memory.l1_buffer import L1Buffer
 
-logger = get_logger("preprocessor")
+logger = get_logger("llm_request_hook")
 
 
 async def preprocess_llm_request(
@@ -26,13 +25,12 @@ async def preprocess_llm_request(
     req: "ProviderRequest",
     component_manager: "ComponentManager"
 ) -> None:
-    """LLM 对话前处理主入口
+    """LLM 请求钩子处理
     
     执行所有 LLM 对话前的预处理逻辑（按顺序执行）：
     1. L1 上下文注入
     2. TODO: 用户画像注入（阶段 9）
     3. TODO: 知识图谱检索结果注入（阶段 4）
-    4. TODO: 其他对话前处理逻辑
     
     Args:
         event: AstrBot 消息事件对象
