@@ -1,0 +1,17 @@
+services:
+  astrbot:
+    image: soulter/astrbot:latest
+    # 中国大陆用户可使用镜像加速：
+    # image: m.daocloud.io/docker.io/soulter/astrbot:latest
+    container_name: astrbot-test
+    ports:
+      - "6185:6185"  # AstrBot Web 管理面板
+      - "6199:6199"  # WebSocket 端口
+    volumes:
+      # 挂载插件目录（开发模式）
+      - .:/AstrBot/data/plugins/astrbot_plugin_iris_tier_memory
+      # 持久化数据
+      - ./docker-data/astrbot:/AstrBot/data
+    environment:
+      - TZ=Asia/Shanghai
+    restart: unless-stopped
