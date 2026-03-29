@@ -31,6 +31,7 @@ from iris_memory.core import (
     handle_user_message,
     preprocess_llm_request,
     handle_llm_response,
+    set_component_manager,
 )
 from iris_memory.tools import (
     SaveKnowledgeTool,
@@ -82,6 +83,9 @@ class IrisTierMemoryPlugin(Star):
         components = create_components(context)
         self.component_manager: Optional[ComponentManager] = ComponentManager(components)
         self._initialized: bool = False
+        
+        # 设置全局组件管理器引用
+        set_component_manager(self.component_manager)
         
         # 注册 LLM Tool
         self._register_llm_tools()

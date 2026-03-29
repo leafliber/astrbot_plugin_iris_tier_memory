@@ -7,9 +7,8 @@ from pydantic.dataclasses import dataclass
 from astrbot.core.agent.tool import FunctionTool, ToolExecResult
 from astrbot.core.agent.run_context import ContextWrapper
 from astrbot.core.astr_agent_context import AstrAgentContext
-from iris_memory.core import get_logger
+from iris_memory.core import get_logger, get_component_manager
 from iris_memory.l2_memory import MemoryEntry
-from iris_memory.core.lifecycle import get_component_manager
 
 logger = get_logger("tools")
 

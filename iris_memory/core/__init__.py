@@ -8,7 +8,7 @@ from .logger import get_logger
 from .components import Component, ComponentManager, ComponentInitResult, SystemStatus
 from .llm_request_hook import preprocess_llm_request
 from .message_hook import handle_user_message, update_l1_buffer
-from .lifecycle import create_components, initialize_components, shutdown_components
+from .lifecycle import create_components, initialize_components, shutdown_components, set_component_manager, get_component_manager
 from .llm_response_hook import handle_llm_response
 
 __all__ = [
@@ -23,5 +23,7 @@ __all__ = [
     "create_components",
     "initialize_components",
     "shutdown_components",
+    "set_component_manager",
+    "get_component_manager",
     "handle_llm_response",
 ]

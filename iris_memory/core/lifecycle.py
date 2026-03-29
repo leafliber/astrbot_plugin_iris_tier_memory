@@ -12,6 +12,34 @@ if TYPE_CHECKING:
 
 logger = get_logger("lifecycle")
 
+# 全局组件管理器实例
+_component_manager: Optional[ComponentManager] = None
+
+
+def set_component_manager(manager: ComponentManager) -> None:
+    """设置全局组件管理器
+    
+    Args:
+        manager: 组件管理器实例
+    """
+    global _component_manager
+    _component_manager = manager
+    logger.debug("已设置全局组件管理器")
+
+
+def get_component_manager() -> ComponentManager:
+    """获取全局组件管理器
+    
+    Returns:
+        组件管理器实例
+        
+    Raises:
+        RuntimeError: 如果组件管理器未初始化
+    """
+    if _component_manager is None:
+        raise RuntimeError("组件管理器未初始化，请先调用 set_component_manager()")
+    return _component_manager
+
 
 def create_components(context: "Context") -> Tuple[Component, ...]:
     """创建所有组件实例
