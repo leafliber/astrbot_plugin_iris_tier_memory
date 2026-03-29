@@ -73,7 +73,8 @@ class LLMManager(Component):
             self._token_stats = TokenStatsManager(self._context)
             
             # 加载调用日志最大条数配置
-            max_logs = config.get("hidden.call_log_max_entries", 100)
+            # 注意：隐藏配置使用单层键名，不需要 "hidden." 前缀
+            max_logs = config.get("call_log_max_entries", 100)
             self._call_logs = deque(maxlen=max_logs)
             
             self._is_available = True

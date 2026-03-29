@@ -31,8 +31,9 @@ class L1Buffer(Component):
     
     Attributes:
         _queues: 消息队列字典 {group_id: MessageQueue}
-        _summarizer: 总结器实例
-        _lock: 异步锁（保护队列操作）
+        _summarizer: 总结器实例（延迟初始化）
+        _component_manager: 组件管理器引用（用于获取 LLMManager）
+        _provider: 总结使用的 Provider ID
     
     Examples:
         >>> buffer = L1Buffer()
@@ -55,6 +56,8 @@ class L1Buffer(Component):
         super().__init__()
         self._queues: Dict[str, MessageQueue] = {}
         self._summarizer: Optional[Summarizer] = None
+        self._component_manager: Optional["ComponentManager"] = None
+        self._provider: str = ""
         logger.debug("L1Buffer 实例已创建")
     
     @property
@@ -69,7 +72,7 @@ class L1Buffer(Component):
     async def initialize(self) -> None:
         """初始化组件
         
-        创建总结器实例，加载配置。
+        加载配置，总结器延迟创建（需要 LLMManager）。
         
         Raises:
             Exception: 初始化失败时抛出
@@ -84,9 +87,8 @@ class L1Buffer(Component):
                 self._init_error = "L1 缓冲已禁用"
                 return
             
-            # 创建总结器（阶段 2-4 使用占位实现）
-            provider = config.get("l1_buffer.summary_provider")
-            self._summarizer = Summarizer(provider=provider)
+            # 保存 Provider 配置，稍后创建总结器
+            self._provider = config.get("l1_buffer.summary_provider")
             
             self._is_available = True
             logger.info("L1 缓冲组件初始化成功")
@@ -97,6 +99,17 @@ class L1Buffer(Component):
             logger.error(f"L1 缓冲组件初始化失败：{e}", exc_info=True)
             raise
     
+    def set_component_manager(self, manager: "ComponentManager") -> None:
+        """设置组件管理器引用
+        
+        用于延迟获取 LLMManager。
+        
+        Args:
+            manager: 组件管理器实例
+        """
+        self._component_manager = manager
+        logger.debug("L1Buffer 已获取 ComponentManager 引用")
+    
     async def shutdown(self) -> None:
         """关闭组件
         
@@ -105,6 +118,38 @@ class L1Buffer(Component):
         self.clear_all()
         self._is_available = False
         logger.info("L1 缓冲组件已关闭")
+    
+    def _get_or_create_summarizer(self) -> Optional[Summarizer]:
+        """获取或创建 Summarizer（延迟初始化）
+        
+        Returns:
+            Summarizer 实例，无法获取 LLMManager 时返回 None
+        """
+        # 如果已创建，直接返回
+        if self._summarizer is not None:
+            return self._summarizer
+        
+        # 检查 ComponentManager 是否可用
+        if not self._component_manager:
+            logger.warning("ComponentManager 未设置，无法创建 Summarizer")
+            return None
+        
+        # 获取 LLMManager
+        from iris_memory.llm import LLMManager
+        llm_manager = self._component_manager.get_component("llm_manager")
+        
+        if not llm_manager or not llm_manager.is_available:
+            logger.warning("LLMManager 不可用，无法创建 Summarizer")
+            return None
+        
+        # 创建 Summarizer
+        self._summarizer = Summarizer(
+            llm_manager=llm_manager,
+            provider=self._provider
+        )
+        logger.info("Summarizer 已延迟创建")
+        
+        return self._summarizer
     
     def _get_queue_key(self, group_id: str) -> str:
         """获取队列键
@@ -284,7 +329,11 @@ class L1Buffer(Component):
         Args:
             group_id: 群聊ID
         """
-        if not self._summarizer:
+        # 延迟获取 Summarizer
+        summarizer = self._get_or_create_summarizer()
+        
+        if not summarizer:
+            logger.debug("Summarizer 不可用，跳过总结检查")
             return
         
         queue_key = self._get_queue_key(group_id)
@@ -295,22 +344,22 @@ class L1Buffer(Component):
         queue = self._queues[queue_key]
         
         # 检查是否需要总结
-        if not self._summarizer.should_summarize(queue):
+        if not summarizer.should_summarize(queue):
             return
         
         try:
             logger.info(f"开始总结队列：{queue_key}")
             
-            # 调用总结器（阶段 2-4 返回 None）
-            summary = await self._summarizer.summarize(queue)
+            # 调用总结器
+            summary = await summarizer.summarize(queue)
             
             if summary:
                 # 阶段 5：将总结写入 L2（阶段 3 实现）
                 logger.info(f"总结完成：{queue_key}, 长度：{len(summary)}")
             else:
-                # 阶段 2-4：总结功能不可用
+                # 总结返回空
                 logger.warning(
-                    f"总结功能不可用，队列 {queue_key} 将被清空"
+                    f"总结返回空，队列 {queue_key} 将被清空"
                 )
             
             # 清空队列

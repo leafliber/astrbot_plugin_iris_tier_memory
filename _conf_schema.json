@@ -91,6 +91,13 @@
         "default": true,
         "description": "启用 L3 知识图谱"
       },
+      "extraction_provider": {
+        "type": "string",
+        "default": "",
+        "description": "L3 实体提取模型 Provider",
+        "hint": "选择用于知识图谱实体提取的模型，留空则使用默认 Provider",
+        "_special": "select_provider"
+      },
       "max_nodes": {
         "type": "int",
         "default": 50000,

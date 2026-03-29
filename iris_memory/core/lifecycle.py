@@ -89,12 +89,31 @@ async def initialize_components(
         success_count = sum(1 for r in results if r.success)
         logger.info(f"组件初始化完成：{success_count}/{len(results)} 成功")
         
+        # 注入 ComponentManager 引用到需要的组件
+        _inject_component_manager(component_manager)
+        
         return True
         
     except Exception as e:
         logger.error(f"组件初始化失败：{e}", exc_info=True)
         # 即使失败也返回 True，避免重复尝试
         return True
+
+
+def _inject_component_manager(component_manager: ComponentManager) -> None:
+    """注入 ComponentManager 引用到需要的组件
+    
+    某些组件需要延迟获取其他组件的引用（如 L1Buffer 需要 LLMManager），
+    在组件初始化完成后注入 ComponentManager 引用。
+    
+    Args:
+        component_manager: 组件管理器实例
+    """
+    # 注入到 L1Buffer
+    l1_buffer = component_manager.get_component("l1_buffer")
+    if l1_buffer and hasattr(l1_buffer, 'set_component_manager'):
+        l1_buffer.set_component_manager(component_manager)
+        logger.debug("已注入 ComponentManager 到 L1Buffer")
 
 
 async def shutdown_components(
