@@ -816,37 +816,107 @@ iris_memory/
 
 ---
 
-## 阶段 9：画像系统（附加功能）
+## 阶段 9：画像系统（附加功能）✅ **已完成**
 
-**目标**：群聊画像与用户画像可存储、更新、检索。
+**目标**：群聊画像与用户画像可存储、更新、检索，支持群聊隔离和人格隔离。
 
 **前置依赖**：
-- ✅ 阶段1-8
+- ✅ 阶段1-8（配置系统、L1/L2/L3、LLM管理、定时任务）
 
-**实现步骤**：
+---
 
-1. **创建画像系统模块** (`iris_memory/profile/`)
-   - `models.py`：画像数据结构
-   - `group_profile.py`：群聊画像管理
-   - `user_profile.py`：用户画像管理
-   - `storage.py`：画像存储组件
+### 📊 实施进度总结
 
-2. **集成到主程序**
-   - 创建 `ProfileStorage()` 组件
-   - 支持 Tool 调用
+✅ **已完成（15/15 任务）**：
 
-**阶段产物**：
+✅ **核心模块**（iris_memory/profile/）：
+1. `models.py` - 画像数据结构
+2. `storage.py` - 画像存储组件（使用AstrBot KV存储）
+3. `group_profile.py` - 群聊画像管理
+4. `user_profile.py` - 用户画像管理
+5. `analyzer.py` - 画像分析器（LLM批量分析）
+
+✅ **集成点**：
+6. `l1_buffer/buffer.py` - L1总结后更新画像
+7. `core/message_hook.py` - 消息钩子更新用户画像
+8. `tools/get_group_profile.py` - 完善Tool实现
+9. `tools/get_user_profile.py` - 完善Tool实现
+10. `core/llm_request_hook.py` - LLM请求前自动注入画像
+
+✅ **配置**：
+11. `config/defaults.py` - 添加画像相关隐藏配置
+12. `_conf_schema.json` - 完善用户配置节点（enable_auto_injection）
+
+✅ **生命周期**：
+13. `core/lifecycle.py` - 注册ProfileStorage组件
+
+✅ **模块导出**：
+14. `profile/__init__.py` - 创建模块导出文件
+
+✅ **测试**：
+15. `tests/profile/` - 完整测试覆盖（5个测试文件）
+
+---
+
+### 核心设计
+
+#### 1. 存储方式：AstrBot KV存储
+
+**键格式**：
+- 群聊画像：`group_profile:{persona_id}:{group_id}`
+- 用户画像：`user_profile:{persona_id}:{group_id}:{user_id}`
+- 全局模式：`group_id = "default"`
+- 版本控制：画像数据包含 `version` 字段，避免读写竞争
+
+#### 2. 更新时机
+
+- **实时更新**（简单字段）：L1总结后、用户消息后
+- **批量分析**（复杂字段）：定时任务（每24小时）
+
+**简单字段**：最近互动时间、活跃用户列表、历史曾用ID、当前话题
+
+**复杂字段**：性格标签、情感状态、群聊氛围、兴趣爱好、群聊兴趣点
+
+#### 3. 注入方式
+
+- **Tool方式**：LLM主动调用 `get_group_profile` / `get_user_profile`
+- **自动注入**：在 `llm_request_hook.py` 中注入到 `system_prompt`
+
+---
+
+### 完成标志
+
+- ✅ 画像数据可通过KV存储持久化
+- ✅ L1总结后画像简单字段自动更新
+- ✅ LLM可通过Tool获取群聊/用户画像
+- ✅ 画像可自动注入到LLM请求上下文
+- ✅ 定时任务可批量分析并更新画像复杂字段
+- ✅ 群聊隔离和人格隔离正常工作
+- ✅ 版本控制避免读写竞争
+
+---
+
+### 阶段产物
+
 ```
 iris_memory/
-└── profile/                # 画像系统模块
-    ├── __init__.py
-    ├── models.py
-    ├── group_profile.py
-    ├── user_profile.py
-    └── storage.py
+├── profile/                    # 画像系统模块
+│   ├── __init__.py            # 模块导出
+│   ├── models.py              # 画像数据结构
+│   ├── storage.py             # 画像存储组件（KV存储）
+│   ├── group_profile.py       # 群聊画像管理器
+│   ├── user_profile.py        # 用户画像管理器
+│   └── analyzer.py            # 画像分析器（LLM）
+└── tools/
+    ├── get_group_profile.py   # 群聊画像Tool
+    └── get_user_profile.py    # 用户画像Tool
 ```
 
-**测试要求**：`tests/profile/`
+**测试覆盖**：`tests/profile/`（5个测试文件）
+
+**配置项**：
+- 用户配置：`profile.enable`、`profile.analysis_mode`、`profile.enable_auto_injection`
+- 隐藏配置：`profile_analysis_interval_hours`、`profile_max_messages_for_analysis`、`profile_enable_version_control`
 
 ---
 

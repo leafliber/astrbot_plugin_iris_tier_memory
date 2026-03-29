@@ -180,6 +180,12 @@
         "description": "画像分析模式",
         "hint": "all：分析所有消息；related：仅分析对话相关的消息",
         "options": ["all", "related"]
+      },
+      "enable_auto_injection": {
+        "type": "bool",
+        "default": true,
+        "description": "启用画像自动注入",
+        "hint": "在每次LLM请求前自动注入画像到system_prompt"
       }
     }
   },

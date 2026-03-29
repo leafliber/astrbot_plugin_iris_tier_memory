@@ -58,6 +58,7 @@ class ProfileConfig:
     """画像系统配置"""
     enable: bool = True
     analysis_mode: Literal["all", "related"] = "all"
+    enable_auto_injection: bool = True
 
 
 @dataclass
@@ -130,6 +131,11 @@ class HiddenConfig:
     tool_correction_require_confirmation: bool = False  # 修正需确认
     tool_timeout_ms: int = 2000                        # Tool调用超时
     tool_read_max_results: int = 10                    # 读取记忆最大返回数
+    
+    # 画像系统参数
+    profile_analysis_interval_hours: int = 24          # 分析任务间隔（小时）
+    profile_max_messages_for_analysis: int = 50        # 分析时最大消息数
+    profile_enable_version_control: bool = True        # 启用版本控制
 
 
 @dataclass

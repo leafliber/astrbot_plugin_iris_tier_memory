@@ -58,8 +58,13 @@ def create_components(context: "Context") -> Tuple[Component, ...]:
     components.append(TaskScheduler())
     logger.debug("已添加 TaskScheduler 组件")
     
-    # TODO: 后续阶段添加更多组件
     # 阶段9: 画像存储
+    if config.get("profile.enable"):
+        from iris_memory.profile import ProfileStorage
+        components.append(ProfileStorage(context))
+        logger.debug("已添加 ProfileStorage 组件")
+    
+    # TODO: 后续阶段添加更多组件
     # 阶段10: 图片限额管理器
     
     return tuple(components)

@@ -356,6 +356,9 @@ class L1Buffer(Component):
             if summary:
                 # 阶段 5：将总结写入 L2（阶段 3 实现）
                 logger.info(f"总结完成：{queue_key}, 长度：{len(summary)}")
+                
+                # 阶段 9：更新群聊画像（总结后更新）
+                await self._update_profile_after_summary(group_id, queue, summary)
             else:
                 # 总结返回空
                 logger.warning(
@@ -373,6 +376,58 @@ class L1Buffer(Component):
             )
             # 即使失败也清空队列，避免重复触发
             queue.clear()
+    
+    async def _update_profile_after_summary(
+        self,
+        group_id: str,
+        queue: MessageQueue,
+        summary: str
+    ) -> None:
+        """总结后更新画像（内部函数）
+        
+        更新群聊画像的当前话题和活跃用户列表。
+        
+        Args:
+            group_id: 群聊ID
+            queue: 消息队列
+            summary: 总结文本
+        """
+        # 检查画像系统是否启用
+        config = get_config()
+        if not config.get("profile.enable"):
+            return
+        
+        # 获取 ProfileStorage 组件
+        if not self._component_manager:
+            return
+        
+        profile_storage = self._component_manager.get_component("profile")
+        if not profile_storage or not profile_storage.is_available:
+            return
+        
+        try:
+            from iris_memory.profile import GroupProfileManager
+            
+            # 获取群聊画像管理器
+            group_manager = GroupProfileManager(profile_storage)
+            
+            # 提取活跃用户列表（从 queue 中）
+            active_users = list(set(msg.source for msg in queue if msg.role == "user"))
+            
+            # 提取当前话题（使用总结的前 100 字符）
+            current_topic = summary[:100] if len(summary) > 100 else summary
+            
+            # 更新群聊画像简单字段
+            await group_manager.update_simple_fields(
+                group_id=group_id,
+                current_topic=current_topic,
+                active_users=active_users
+            )
+            
+            logger.debug(f"总结后更新群聊画像: {group_id}")
+        
+        except Exception as e:
+            logger.error(f"更新群聊画像失败: {e}", exc_info=True)
     
     def get_queue_stats(self, group_id: str) -> Optional[Dict]:
         """获取队列统计信息

@@ -2,14 +2,15 @@
 消息钩子处理模块
 
 负责处理用户发送的消息钩子，包括：
-- 添加用户消息到 L1 Buffer（当前实现）
-- 用户画像更新（未来扩展）
+- 添加用户消息到 L1 Buffer
+- 用户画像更新
 - 关键词检测（未来扩展）
 """
 from typing import TYPE_CHECKING, cast
 
 from iris_memory.core import get_logger
 from iris_memory.platform import get_adapter
+from iris_memory.config import get_config
 
 if TYPE_CHECKING:
     from astrbot.api.event import AstrMessageEvent
@@ -27,7 +28,7 @@ async def handle_user_message(
     
     执行所有用户消息的处理逻辑（按顺序执行）：
     1. 添加用户消息到 L1 Buffer
-    2. TODO: 用户画像更新（阶段 9）
+    2. 用户画像更新
     3. TODO: 关键词检测（阶段 7）
     
     Args:
@@ -35,8 +36,8 @@ async def handle_user_message(
         component_manager: 组件管理器实例
     """
     await _add_to_l1_buffer(event, component_manager)
-    # TODO: 在未来阶段添加其他处理逻辑
-    # await _update_user_profile(event, component_manager)
+    await _update_user_profile(event, component_manager)
+    # TODO: 关键词检测
     # await _detect_keywords(event, component_manager)
 
 
@@ -76,6 +77,55 @@ async def _add_to_l1_buffer(
     )
     
     logger.debug(f"已添加用户消息到群聊 {group_id} 的 L1 Buffer")
+
+
+async def _update_user_profile(
+    event: "AstrMessageEvent",
+    component_manager: "ComponentManager"
+) -> None:
+    """更新用户画像（内部函数）
+    
+    在用户发送消息时更新画像简单字段。
+    
+    Args:
+        event: AstrBot 消息事件对象
+        component_manager: 组件管理器实例
+    """
+    # 1. 检查是否启用画像系统
+    config = get_config()
+    if not config.get("profile.enable"):
+        return
+    
+    # 2. 获取 ProfileStorage 组件
+    profile_storage = component_manager.get_component("profile")
+    if not profile_storage or not profile_storage.is_available:
+        logger.debug("画像系统组件不可用，跳过画像更新")
+        return
+    
+    # 3. 获取群聊ID和用户ID
+    adapter = get_adapter(event)
+    group_id = adapter.get_group_id(event)
+    user_id = adapter.get_user_id(event)
+    user_name = adapter.get_user_name(event)
+    
+    if not user_id:
+        logger.debug("无法获取用户ID，跳过画像更新")
+        return
+    
+    # 4. 根据群聊隔离配置决定 group_id
+    effective_group_id = group_id if config.get("isolation_config.enable_group_isolation") else "default"
+    
+    # 5. 更新用户画像简单字段
+    from iris_memory.profile import UserProfileManager
+    
+    user_manager = UserProfileManager(profile_storage)
+    await user_manager.update_simple_fields(
+        user_id=user_id,
+        group_id=effective_group_id,
+        user_name=user_name
+    )
+    
+    logger.debug(f"已更新用户画像: {user_id} (群聊: {effective_group_id})")
 
 
 async def update_l1_buffer(
