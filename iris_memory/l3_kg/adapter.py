@@ -261,6 +261,82 @@ class L3KGAdapter(Component):
             logger.error(f"获取图谱统计失败：{e}")
             return {"available": False}
     
+    async def get_all_nodes(self) -> list[dict]:
+        """获取所有节点（用于遗忘淘汰任务）
+        
+        Returns:
+            节点字典列表
+        """
+        if not self._is_available:
+            return []
+        
+        try:
+            result = self._conn.execute("""
+                MATCH (e:Entity)
+                RETURN e.id, e.label, e.name, e.content, e.confidence,
+                       e.access_count, e.last_access_time, e.created_time,
+                       e.source_memory_id, e.group_id, e.properties
+            """)
+            
+            nodes = []
+            for row in result:
+                nodes.append({
+                    "id": row[0],
+                    "label": row[1],
+                    "name": row[2],
+                    "content": row[3],
+                    "confidence": row[4],
+                    "access_count": row[5],
+                    "last_access_time": row[6],
+                    "created_time": row[7],
+                    "source_memory_id": row[8],
+                    "group_id": row[9],
+                    "properties": row[10]
+                })
+            
+            logger.debug(f"获取到 {len(nodes)} 个节点")
+            return nodes
+            
+        except Exception as e:
+            logger.error(f"获取所有节点失败：{e}")
+            return []
+    
+    async def evict_nodes(self, node_ids: list[str]) -> int:
+        """淘汰节点及关联边（用于定时任务）
+        
+        先删除关联边，再删除节点。
+        
+        Args:
+            node_ids: 要淘汰的节点 ID 列表
+        
+        Returns:
+            实际删除的节点数量
+        """
+        if not self._is_available or not node_ids:
+            return 0
+        
+        try:
+            # 1. 删除关联边
+            self._conn.execute("""
+                MATCH ()-[r:Related]-(e:Entity)
+                WHERE e.id IN $node_ids
+                DELETE r
+            """, {"node_ids": node_ids})
+            
+            # 2. 删除节点
+            self._conn.execute("""
+                MATCH (e:Entity)
+                WHERE e.id IN $node_ids
+                DELETE e
+            """, {"node_ids": node_ids})
+            
+            logger.info(f"已淘汰 {len(node_ids)} 个节点及其关联边")
+            return len(node_ids)
+            
+        except Exception as e:
+            logger.error(f"淘汰节点失败：{e}")
+            return 0
+    
     async def shutdown(self) -> None:
         """关闭数据库连接"""
         if self._conn:

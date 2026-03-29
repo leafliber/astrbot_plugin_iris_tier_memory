@@ -53,8 +53,12 @@ def create_components(context: "Context") -> Tuple[Component, ...]:
         components.append(L3KGAdapter())
         logger.debug("已添加 L3KGAdapter 组件")
     
-    # TODO: 后续阶段添加更多组件
     # 阶段6: 定时任务调度器
+    from iris_memory.tasks import TaskScheduler
+    components.append(TaskScheduler())
+    logger.debug("已添加 TaskScheduler 组件")
+    
+    # TODO: 后续阶段添加更多组件
     # 阶段9: 画像存储
     # 阶段10: 图片限额管理器
     
@@ -92,6 +96,9 @@ async def initialize_components(
         # 注入 ComponentManager 引用到需要的组件
         _inject_component_manager(component_manager)
         
+        # 启动定时任务
+        await _start_scheduled_tasks(component_manager)
+        
         return True
         
     except Exception as e:
@@ -114,6 +121,54 @@ def _inject_component_manager(component_manager: ComponentManager) -> None:
     if l1_buffer and hasattr(l1_buffer, 'set_component_manager'):
         l1_buffer.set_component_manager(component_manager)
         logger.debug("已注入 ComponentManager 到 L1Buffer")
+    
+    # 注入到 TaskScheduler
+    scheduler = component_manager.get_component("scheduler")
+    if scheduler and hasattr(scheduler, 'set_component_manager'):
+        scheduler.set_component_manager(component_manager)
+        logger.debug("已注入 ComponentManager 到 TaskScheduler")
+
+
+async def _start_scheduled_tasks(component_manager: ComponentManager) -> None:
+    """启动定时任务
+    
+    注册并启动所有定时任务。
+    
+    Args:
+        component_manager: 组件管理器实例
+    """
+    from iris_memory.tasks import TaskScheduler, ForgettingTask, MergeTask
+    
+    scheduler = component_manager.get_component("scheduler")
+    if not scheduler or not scheduler.is_available:
+        logger.warning("TaskScheduler 不可用，跳过启动定时任务")
+        return
+    
+    config = get_config()
+    
+    # 注册遗忘清洗任务
+    if config.get("scheduled_tasks.enable_forgetting"):
+        forgetting_task = ForgettingTask(component_manager)
+        interval_hours = config.get("forgetting_task_interval_hours")
+        
+        scheduler.register_periodic_task(
+            task_name="forgetting",
+            coro_func=forgetting_task.execute,
+            interval_hours=interval_hours
+        )
+        logger.info(f"已注册遗忘清洗任务，间隔 {interval_hours} 小时")
+    
+    # 注册合并任务
+    if config.get("scheduled_tasks.enable_merging"):
+        merge_task = MergeTask(component_manager)
+        interval_hours = config.get("merge_task_interval_hours")
+        
+        scheduler.register_periodic_task(
+            task_name="merging",
+            coro_func=merge_task.execute,
+            interval_hours=interval_hours
+        )
+        logger.info(f"已注册记忆合并任务，间隔 {interval_hours} 小时")
 
 
 async def shutdown_components(

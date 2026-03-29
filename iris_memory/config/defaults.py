@@ -117,6 +117,13 @@ class HiddenConfig:
     
     # LLM 调用管理参数
     call_log_max_entries: int = 100         # 调用日志最大保留条数
+    
+    # 定时任务参数
+    forgetting_task_interval_hours: int = 6     # 遗忘清洗任务间隔（小时）
+    merge_task_interval_hours: int = 24         # 合并任务间隔（小时）
+    merge_similarity_threshold: float = 0.85    # 合并相似度阈值
+    merge_batch_size: int = 10                  # 合并批处理大小
+    eviction_batch_size: int = 100              # 淘汰批处理大小
 
 
 @dataclass

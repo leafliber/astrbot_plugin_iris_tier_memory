@@ -437,7 +437,7 @@ iris_memory/
 
 ---
 
-## 阶段 5：LLM 调用统一管理
+## 阶段 5：LLM 调用统一管理 ✅ **已完成**
 
 **目标**：提供统一的 LLM 调用入口，支持 Token 统计与调用模块追踪。
 
@@ -448,606 +448,201 @@ iris_memory/
 
 ### 📊 实施进度总结
 
-**已完成（全部）**：
-
 ✅ **核心模块**（iris_memory/llm/）：
-- `manager.py` - LLM 调用管理器（已实现）
-- `token_stats.py` - Token 统计（使用 AstrBot KV 存储，已实现）
-- `call_log.py` - 调用记录（内存存储，已实现）
-- `caller.py` - 移除 PlaceholderLLMCaller，保留 LLMCaller 协议
+- `manager.py` - LLM 调用管理器
+- `token_stats.py` - Token 统计（AstrBot KV 存储）
+- `call_log.py` - 调用记录（内存存储）
+- `caller.py` - LLMCaller 协议
 
 ✅ **集成点**：
-- `iris_memory/l1_buffer/summarizer.py` - 使用 LLMManager
-- `iris_memory/l3_kg/extractor.py` - 使用 LLMManager
-- `iris_memory/core/lifecycle.py` - 注册 LLMManager 组件
-- `main.py` - 传入 context 给 create_components
+- `l1_buffer/summarizer.py` - 使用 LLMManager
+- `l3_kg/extractor.py` - 使用 LLMManager
+- `core/lifecycle.py` - 注册 LLMManager 组件
+- `main.py` - 传入 context
 
 ✅ **配置**：
-- `iris_memory/config/defaults.py` - 添加 call_log_max_entries 隐藏配置
+- `config/defaults.py` - call_log_max_entries 隐藏配置
+- `_conf_schema.json` - 各模块 provider 配置
 
 ✅ **测试**：
 - `tests/llm/test_manager.py` - LLMManager 测试
 - `tests/llm/test_token_stats.py` - Token 统计测试
+- `tests/llm/test_config_access.py` - 配置访问测试
+- `tests/l1_buffer/test_delayed_init.py` - 延迟初始化测试
 
 ---
 
-### 核心设计决策
+### 核心设计
 
-#### 1. Provider 获取方式
+#### 1. 架构概览
 
-LLMManager 通过 `StarContext` 获取 Provider：
-
-```python
-# 方式1：通过 provider_id 获取指定 provider
-provider = context.get_provider_by_id(provider_id)
-
-# 方式2：获取当前默认 provider  
-provider = context.get_using_provider()
-
-# 方式3：直接调用（推荐，封装了更多逻辑）
-llm_resp = await context.llm_generate(
-    chat_provider_id=provider_id,  # 可选，为空则使用默认
-    prompt="Hello",
-    contexts=[...]  # 可选，上下文消息
-)
+```
+LLMManager (Component)
+├── Token 统计 (TokenStatsManager)
+│   ├── 内存缓存 (defaultdict)
+│   └── KV 持久化 (AstrBot storage)
+├── 调用日志 (deque)
+│   └── 最大保留条数可配置
+└── Provider 解析
+    ├── 参数优先级：参数 > 模块配置 > 默认
+    └── 模块映射：l1_summarizer → l1_buffer.summary_provider
 ```
 
-#### 2. Token 统计持久化
+#### 2. Token 统计数据结构
 
-使用 AstrBot 内置的 KV 存储（需要 AstrBot >= 4.9.2）：
-
-```python
-# 存储 Token 统计
-await self.put_kv_data("token_stats:module:l1_summarizer", {
-    "total_tokens": 10000,
-    "total_calls": 50
-})
-
-# 读取 Token 统计
-stats = await self.get_kv_data("token_stats:module:l1_summarizer", {})
-```
+**KV 存储键**：`token_stats:{module}`
 
 **数据结构**：
 ```json
 {
-  "token_stats:global": {
-    "total_input_tokens": 50000,
-    "total_output_tokens": 30000,
-    "total_calls": 200
-  },
-  "token_stats:module:l1_summarizer": {...},
-  "token_stats:module:l3_kg_extraction": {...}
+  "total_input_tokens": 10000,
+  "total_output_tokens": 3000,
+  "total_calls": 50
 }
 ```
 
-#### 3. 调用日志存储
+**模块分类**：
+- `global` - 全局统计
+- `l1_summarizer` - L1 总结
+- `l3_kg_extraction` - L3 实体提取
+- 其他模块...
 
-调用日志存储在内存中（`deque`），不持久化：
+#### 3. Provider 配置映射
 
-```python
-from collections import deque
-
-# 最大保留条数可配置
-max_logs = config.get("llm.call_log_max_entries", 100)
-call_logs: deque[CallLog] = deque(maxlen=max_logs)
-```
-
-#### 4. 模块 Provider 配置
-
-各模块可通过配置指定 provider：
-
-```json
-{
-  "l1_buffer.summary_provider": "gpt-4o",      // L1 总结
-  "l2_memory.summary_provider": "gpt-4o-mini", // L2 记忆总结  
-  "l3_kg.extraction_provider": "",             // L3 实体提取（留空使用默认）
-  "scheduled_tasks.provider": "",              // 定时任务
-  "enhancement.rerank_provider": "",           // 重排序
-  "image_parsing.provider": ""                 // 图片解析
-}
-```
+| 模块 | 配置键 | 说明 |
+|------|--------|------|
+| L1 总结 | `l1_buffer.summary_provider` | L1 Buffer 总结模型 |
+| L2 总结 | `l2_memory.summary_provider` | L2 记忆总结模型 |
+| L3 提取 | `l3_kg.extraction_provider` | 知识图谱实体提取模型 |
+| 定时任务 | `scheduled_tasks.provider` | 定时任务模型 |
+| 重排序 | `enhancement.rerank_provider` | 检索重排序模型 |
+| 图片解析 | `image_parsing.provider` | 图片解析模型 |
 
 ---
 
-### 实现步骤
+### 实现要点
 
-### ⏳ 5.1 创建调用记录数据结构 (`iris_memory/llm/call_log.py`)
+#### 1. 调用记录结构 (CallLog)
 
+**关键属性**：
+- `call_id`, `timestamp`, `module` - 调用标识
+- `provider_id`, `prompt`, `response` - 调用内容
+- `input_tokens`, `output_tokens`, `duration_ms` - 统计数据
+- `success`, `error_message` - 状态信息
+
+**存储方式**：内存 `deque`，不持久化，最大长度可配置
+
+#### 2. Token 统计管理 (TokenStatsManager)
+
+**核心接口**：
 ```python
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Optional, Dict
-
-@dataclass
-class CallLog:
-    """LLM 调用记录"""
-    
-    call_id: str                           # 调用唯一ID
-    timestamp: datetime                    # 调用时间
-    module: str                            # 调用模块（如 "l1_summarizer"）
-    provider_id: str                       # Provider ID
-    prompt: str                            # 输入提示词（可能截断）
-    response: str                          # 响应文本（可能截断）
-    input_tokens: int                      # 输入 Token 数
-    output_tokens: int                     # 输出 Token 数
-    duration_ms: int                       # 调用耗时（毫秒）
-    success: bool                          # 是否成功
-    error_message: Optional[str] = None    # 错误信息
-    metadata: Dict = field(default_factory=dict)  # 额外元数据
+async def record_usage(module, input_tokens, output_tokens)
+async def get_stats(module = "global") -> TokenUsage
+async def reset_stats(module = "global")
+async def get_all_stats() -> Dict[str, TokenUsage]
 ```
 
-**要点**：
-- 使用 `dataclass` 简化定义
-- `prompt` 和 `response` 可截断，避免内存过大
-- 提供 `to_dict()` 方法用于序列化
+**持久化**：使用 AstrBot KV 存储，键格式 `token_stats:{module}`
 
----
+#### 3. LLMManager 核心接口
 
-### ⏳ 5.2 创建 Token 统计模块 (`iris_memory/llm/token_stats.py`)
-
+**主要方法**：
 ```python
-from dataclasses import dataclass
-from typing import Dict, Optional
-from collections import defaultdict
+async def generate(
+    prompt: str,
+    module: str = "default",
+    provider_id: Optional[str] = None,
+    **kwargs
+) -> str
 
-@dataclass
-class TokenUsage:
-    """Token 使用统计"""
-    total_input_tokens: int = 0
-    total_output_tokens: int = 0
-    total_calls: int = 0
-    
-    @property
-    def total_tokens(self) -> int:
-        return self.total_input_tokens + self.total_output_tokens
+async def call(prompt: str, provider: str = "") -> str  # LLMCaller 协议
 
-class TokenStatsManager:
-    """Token 统计管理器（使用 AstrBot KV 存储）"""
-    
-    def __init__(self, context: "Context"):
-        self._context = context
-        self._cache: Dict[str, TokenUsage] = defaultdict(TokenUsage)
-    
-    async def record_usage(
-        self,
-        module: str,
-        input_tokens: int,
-        output_tokens: int
-    ) -> None:
-        """记录 Token 使用"""
-        # 更新内存缓存
-        self._cache[module].total_input_tokens += input_tokens
-        self._cache[module].total_output_tokens += output_tokens
-        self._cache[module].total_calls += 1
-        
-        # 更新全局统计
-        self._cache["global"].total_input_tokens += input_tokens
-        self._cache["global"].total_output_tokens += output_tokens
-        self._cache["global"].total_calls += 1
-        
-        # 持久化到 KV 存储
-        await self._save_to_kv(module)
-    
-    async def get_stats(self, module: str = "global") -> TokenUsage:
-        """获取统计信息"""
-        if module not in self._cache:
-            await self._load_from_kv(module)
-        return self._cache[module]
-    
-    async def reset_stats(self, module: str = "global") -> None:
-        """重置统计"""
-        self._cache[module] = TokenUsage()
-        await self._save_to_kv(module)
-    
-    async def get_all_stats(self) -> Dict[str, TokenUsage]:
-        """获取所有模块的统计"""
-        return dict(self._cache)
+async def get_token_stats(module = "global") -> Dict
+async def get_all_token_stats() -> Dict[str, Dict]
+async def reset_token_stats(module = "global")
+def get_recent_call_logs(limit = 20) -> List[Dict]
 ```
 
-**要点**：
-- 使用内存缓存 + KV 持久化
-- 支持 `global`、`l1_summarizer`、`l3_kg_extraction` 等模块
-- 提供 `record_usage()`、`get_stats()`、`reset_stats()` 接口
+**Provider 解析优先级**：
+1. 参数 `provider_id`
+2. 模块配置（如 `l1_buffer.summary_provider`）
+3. 默认 Provider（空字符串）
 
----
+#### 4. 组件集成
 
-### ⏳ 5.3 实现 LLMManager (`iris_memory/llm/manager.py`)
-
-```python
-from typing import Optional, Dict, List
-from datetime import datetime
-import uuid
-import time
-
-from astrbot.api.star import Context
-from astrbot.api.provider import LLMResponse
-
-from iris_memory.core import Component, get_logger
-from iris_memory.config import get_config
-from .token_stats import TokenStatsManager
-from .call_log import CallLog
-from collections import deque
-
-logger = get_logger("llm_manager")
-
-class LLMManager(Component):
-    """LLM 调用管理器
-    
-    提供统一的 LLM 调用入口，支持：
-    - Token 统计与持久化
-    - 调用日志记录
-    - 模块级 Provider 配置
-    - 调用追踪
-    
-    Attributes:
-        _context: AstrBot Context 对象
-        _token_stats: Token 统计管理器
-        _call_logs: 调用日志队列
-    """
-    
-    def __init__(self, context: Context):
-        super().__init__()
-        self._context = context
-        self._token_stats: Optional[TokenStatsManager] = None
-        self._call_logs: deque[CallLog] = deque(maxlen=100)
-    
-    @property
-    def name(self) -> str:
-        return "llm_manager"
-    
-    async def initialize(self) -> None:
-        """初始化管理器"""
-        config = get_config()
-        
-        # 初始化 Token 统计管理器
-        self._token_stats = TokenStatsManager(self._context)
-        
-        # 加载调用日志最大条数配置
-        max_logs = config.get("llm.call_log_max_entries", 100)
-        self._call_logs = deque(maxlen=max_logs)
-        
-        self._is_available = True
-        logger.info("LLMManager 初始化成功")
-    
-    async def shutdown(self) -> None:
-        """关闭管理器"""
-        self._is_available = False
-        logger.info("LLMManager 已关闭")
-    
-    async def generate(
-        self,
-        prompt: str,
-        module: str = "default",
-        provider_id: Optional[str] = None,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
-        contexts: Optional[List[Dict]] = None,
-        **kwargs
-    ) -> str:
-        """生成文本响应
-        
-        Args:
-            prompt: 输入提示词
-            module: 调用模块标识（用于统计）
-            provider_id: Provider ID（留空使用模块配置或默认）
-            temperature: 温度参数
-            max_tokens: 最大输出 Token 数
-            contexts: 上下文消息列表
-            **kwargs: 其他参数
-            
-        Returns:
-            生成的文本响应
-            
-        Raises:
-            Exception: LLM 调用失败
-        """
-        if not self._is_available:
-            raise RuntimeError("LLMManager 未初始化")
-        
-        # 确定使用的 provider
-        actual_provider_id = await self._resolve_provider(module, provider_id)
-        
-        # 记录开始时间
-        start_time = time.time()
-        call_id = str(uuid.uuid4())
-        
-        try:
-            logger.debug(
-                f"LLM 调用开始：module={module}, provider={actual_provider_id}"
-            )
-            
-            # 调用 AstrBot LLM
-            llm_resp: LLMResponse = await self._context.llm_generate(
-                chat_provider_id=actual_provider_id,
-                prompt=prompt,
-                contexts=contexts or [],
-            )
-            
-            # 提取响应
-            response_text = llm_resp.completion_text or ""
-            
-            # 计算耗时
-            duration_ms = int((time.time() - start_time) * 1000)
-            
-            # 记录 Token 使用
-            input_tokens = llm_resp.usage.prompt_tokens if llm_resp.usage else 0
-            output_tokens = llm_resp.usage.completion_tokens if llm_resp.usage else 0
-            
-            await self._token_stats.record_usage(
-                module=module,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens
-            )
-            
-            # 记录调用日志
-            log = CallLog(
-                call_id=call_id,
-                timestamp=datetime.now(),
-                module=module,
-                provider_id=actual_provider_id,
-                prompt=self._truncate_text(prompt, 500),
-                response=self._truncate_text(response_text, 500),
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                duration_ms=duration_ms,
-                success=True
-            )
-            self._call_logs.append(log)
-            
-            logger.info(
-                f"LLM 调用成功：module={module}, "
-                f"tokens={input_tokens}+{output_tokens}, "
-                f"duration={duration_ms}ms"
-            )
-            
-            return response_text
-            
-        except Exception as e:
-            # 记录失败日志
-            duration_ms = int((time.time() - start_time) * 1000)
-            log = CallLog(
-                call_id=call_id,
-                timestamp=datetime.now(),
-                module=module,
-                provider_id=actual_provider_id or "unknown",
-                prompt=self._truncate_text(prompt, 500),
-                response="",
-                input_tokens=0,
-                output_tokens=0,
-                duration_ms=duration_ms,
-                success=False,
-                error_message=str(e)
-            )
-            self._call_logs.append(log)
-            
-            logger.error(f"LLM 调用失败：module={module}, error={e}")
-            raise
-    
-    async def _resolve_provider(
-        self,
-        module: str,
-        provider_id: Optional[str]
-    ) -> str:
-        """解析要使用的 Provider ID
-        
-        优先级：参数 > 模块配置 > 默认
-        """
-        if provider_id:
-            return provider_id
-        
-        # 从配置获取模块对应的 provider
-        config = get_config()
-        
-        # 模块名到配置键的映射
-        module_config_map = {
-            "l1_summarizer": "l1_buffer.summary_provider",
-            "l2_summarizer": "l2_memory.summary_provider",
-            "l3_kg_extraction": "l3_kg.extraction_provider",
-            "scheduled_tasks": "scheduled_tasks.provider",
-            "enhancement_rerank": "enhancement.rerank_provider",
-            "image_parsing": "image_parsing.provider",
-        }
-        
-        config_key = module_config_map.get(module)
-        if config_key:
-            configured_provider = config.get(config_key)
-            if configured_provider:
-                return configured_provider
-        
-        # 返回空字符串，使用默认 provider
-        return ""
-    
-    def _truncate_text(self, text: str, max_length: int) -> str:
-        """截断文本"""
-        if len(text) <= max_length:
-            return text
-        return text[:max_length] + "..."
-    
-    # ========================================================================
-    # 接口方法
-    # ========================================================================
-    
-    async def get_token_stats(
-        self,
-        module: str = "global"
-    ) -> Dict:
-        """获取 Token 统计"""
-        usage = await self._token_stats.get_stats(module)
-        return {
-            "module": module,
-            "total_input_tokens": usage.total_input_tokens,
-            "total_output_tokens": usage.total_output_tokens,
-            "total_calls": usage.total_calls
-        }
-    
-    async def get_all_token_stats(self) -> Dict[str, Dict]:
-        """获取所有模块的 Token 统计"""
-        all_stats = await self._token_stats.get_all_stats()
-        return {
-            module: {
-                "total_input_tokens": usage.total_input_tokens,
-                "total_output_tokens": usage.total_output_tokens,
-                "total_calls": usage.total_calls
-            }
-            for module, usage in all_stats.items()
-        }
-    
-    async def reset_token_stats(self, module: str = "global") -> None:
-        """重置 Token 统计"""
-        await self._token_stats.reset_stats(module)
-        logger.info(f"已重置 Token 统计：{module}")
-    
-    def get_recent_call_logs(self, limit: int = 20) -> List[Dict]:
-        """获取最近的调用日志"""
-        logs = list(self._call_logs)[-limit:]
-        return [
-            {
-                "call_id": log.call_id,
-                "timestamp": log.timestamp.isoformat(),
-                "module": log.module,
-                "provider_id": log.provider_id,
-                "input_tokens": log.input_tokens,
-                "output_tokens": log.output_tokens,
-                "duration_ms": log.duration_ms,
-                "success": log.success,
-                "error_message": log.error_message
-            }
-            for log in logs
-        ]
-```
-
-**要点**：
-- 继承 `Component`，支持组件管理
-- 实现 `LLMCaller` 协议（`call()` 方法）
-- 支持 `generate()` 方法（更丰富的参数）
-- Token 统计使用 AstrBot KV 存储
-- 调用日志使用 `deque` 内存存储
-- 支持模块级 Provider 配置
-
----
-
-### ⏳ 5.4 修改 LLMCaller 协议 (`iris_memory/llm/caller.py`)
-
-修改现有的 `caller.py`，将 `PlaceholderLLMCaller` 替换为指向 `LLMManager`：
-
-```python
-# caller.py - 仅保留协议定义
-from typing import Protocol, runtime_checkable
-
-@runtime_checkable
-class LLMCaller(Protocol):
-    """LLM 调用协议接口"""
-    
-    async def call(self, prompt: str, provider: str = "") -> str:
-        """调用 LLM 生成响应"""
-        ...
-
-# 移除 PlaceholderLLMCaller，由 LLMManager 实现
-```
-
----
-
-### ⏳ 5.5 修改 Summarizer 使用 LLMManager
-
-修改 `iris_memory/l1_buffer/summarizer.py`：
-
-```python
-class Summarizer:
-    def __init__(
-        self,
-        llm_manager: "LLMManager",  # 改为接收 LLMManager
-        provider: str = ""
-    ):
-        self.llm_manager = llm_manager
-        self.provider = provider
-    
-    async def summarize(self, queue: MessageQueue) -> Optional[str]:
-        messages = queue.to_message_list()
-        prompt = self._build_summary_prompt(messages)
-        
-        # 调用 LLMManager
-        summary = await self.llm_manager.generate(
-            prompt=prompt,
-            module="l1_summarizer",
-            provider_id=self.provider or None
-        )
-        
-        return summary
-```
-
----
-
-### ⏳ 5.6 修改 L1Buffer 初始化
-
-修改 `iris_memory/l1_buffer/buffer.py`：
-
-```python
-class L1Buffer(Component):
-    async def initialize(self) -> None:
-        # ... 其他初始化 ...
-        
-        # 从 ComponentManager 获取 LLMManager
-        # （需要在 lifecycle.py 中先创建 LLMManager）
-```
-
----
-
-### ⏳ 5.7 集成到生命周期 (`iris_memory/core/lifecycle.py`)
-
-修改 `create_components()`：
-
+**生命周期集成** (`lifecycle.py`)：
 ```python
 def create_components(context: Context) -> Tuple[Component, ...]:
     components = []
     
-    # 阶段5: LLM 管理器（最先创建，其他组件依赖）
-    from iris_memory.llm import LLMManager
+    # LLMManager 最先创建（其他组件依赖）
     components.append(LLMManager(context))
-    logger.debug("已添加 LLMManager 组件")
     
-    # 阶段2: L1 消息缓冲
-    if config.get("l1_buffer.enable"):
-        from iris_memory.l1_buffer import L1Buffer
-        components.append(L1Buffer())
-    
-    # ... 其他组件 ...
-    
+    # 其他组件...
     return tuple(components)
 ```
 
----
-
-### ⏳ 5.8 添加配置项 (`iris_memory/config/defaults.py`)
-
-添加隐藏配置：
-
+**依赖注入** (`lifecycle.py`)：
 ```python
-@dataclass
-class HiddenConfig:
-    # ... 现有配置 ...
+def _inject_component_manager(manager: ComponentManager):
+    # 注入到需要延迟获取依赖的组件
+    l1_buffer = manager.get_component("l1_buffer")
+    if l1_buffer:
+        l1_buffer.set_component_manager(manager)
+```
+
+**L1Buffer 使用** (`buffer.py`)：
+```python
+def _get_or_create_summarizer() -> Optional[Summarizer]:
+    if self._summarizer:
+        return self._summarizer
     
-    # LLM 调用配置
-    call_log_max_entries: int = 100  # 调用日志最大保留条数
+    llm_manager = self._component_manager.get_component("llm_manager")
+    if llm_manager and llm_manager.is_available:
+        self._summarizer = Summarizer(llm_manager, self._provider)
+        return self._summarizer
 ```
 
 ---
 
-### ⏳ 5.9 修改插件入口 (`main.py`)
+### 配置项
 
-修改 `__init__` 传入 context：
-
+**隐藏配置** (`config/defaults.py`)：
 ```python
-def __init__(self, context: Context, config: AstrBotConfig):
-    super().__init__(context)
-    
-    # 初始化配置系统
-    data_dir = Path(get_astrbot_data_path()) / "plugin_data" / "iris_tier_memory"
-    self.config = init_config(config, data_dir)
-    
-    # 创建组件（传入 context）
-    components = create_components(context)
-    self.component_manager = ComponentManager(components)
+call_log_max_entries: int = 100  # 调用日志最大保留条数
 ```
+
+**用户配置** (`_conf_schema.json`)：
+```json
+{
+  "l1_buffer.summary_provider": "",
+  "l3_kg.extraction_provider": ""
+  // 其他模块配置...
+}
+```
+
+---
+
+### 测试要求
+
+**单元测试**：
+- `test_manager.py` - LLMManager 核心功能
+- `test_token_stats.py` - Token 统计持久化
+- `test_config_access.py` - 配置键访问验证
+
+**集成测试**：
+- `test_lifecycle_flow.py` - 组件初始化和依赖注入
+- `test_l1_llm_integration.py` - L1 与 LLM 协作
+
+**端到端测试**：
+- `test_message_to_summary_flow.py` - 完整业务流程
+
+**关键验证点**：
+- Token 统计正确记录和持久化
+- 调用日志正确记录
+- Provider 解析优先级正确
+- 组件依赖注入正常工作
+- L1Buffer 延迟初始化成功
 
 ---
 
@@ -1083,40 +678,44 @@ iris_memory/
 
 ---
 
-## 阶段 6：定时任务系统
+## 阶段 6：定时任务系统 ✅ **已完成**
 
 **目标**：定时任务可按配置执行，不阻塞主流程，写竞争保护生效。
 
-**前置依赖**：
-- ✅ 阶段1-5：配置系统、L1-L3、LLM 管理
+**核心特性**：
+- 异步执行：所有任务在后台运行，不阻塞主流程
+- 写竞争保护：使用 `asyncio.Lock` 防止并发写入冲突
+- 故障隔离：单个任务失败不影响其他任务和主系统
+- 批量优化：支持批量处理，提高性能
 
-**实现步骤**：
+**实现模块**：
+1. **TaskScheduler** (`tasks/scheduler.py`) - 任务调度器
+   - 后台任务调度（asyncio.create_task）
+   - 写锁保护机制（asyncio.Lock）
+   - 任务队列串行处理
+   - 周期性任务注册
 
-1. **创建定时任务模块** (`iris_memory/tasks/`)
-   - `scheduler.py`：任务调度器
-     - 定义 `TaskScheduler` 类，继承 `Component`
-     - 注册为 `scheduler` 模块
-     - 使用 `asyncio` 实现定时调度
-     - 实现写锁保护
-   
-   - `forgetting_task.py`：遗忘清洗任务
-     - 定义 `ForgettingTask` 类
-     - 计算遗忘评分、批量淘汰
-     - 可选 LLM 确认删除
-   
-   - `merge_task.py`：合并任务
-     - 定义 `MergeTask` 类
-     - 检索相似记忆、LLM 合并
-     - 更新存储
+2. **ForgettingTask** (`tasks/forgetting_task.py`) - 遗忘清洗任务
+   - L2 记忆库遗忘清洗（遗忘评分计算 + 批量淘汰）
+   - L3 知识图谱节点淘汰（关联边自动清理）
+   - 默认每6小时执行
 
-2. **集成到主程序** (`main.py`)
-   - 在 `_ensure_initialized()` 中创建 `TaskScheduler()` 组件
-   - 配置任务执行时间
+3. **MergeTask** (`tasks/merge_task.py`) - 记忆合并任务
+   - 相似记忆检测
+   - LLM 智能合并
+   - 群聊隔离支持
+   - 默认每24小时执行
+
+**配置项**：
+- 用户配置：`scheduled_tasks.enable_forgetting`、`scheduled_tasks.enable_merging`
+- 隐藏配置：`forgetting_task_interval_hours`、`merge_task_interval_hours`、`eviction_batch_size`
 
 **完成标志**：
-- 定时任务按配置时间执行
-- 日志显示任务执行结果
-- 多任务并行时不发生写冲突
+- ✅ 定时任务按配置时间执行
+- ✅ 日志显示任务执行结果
+- ✅ 多任务并行时不发生写冲突
+- ✅ 遗忘清洗后记忆数量符合预期
+- ✅ 合并任务能正常合并相似记忆
 
 **阶段产物**：
 ```
@@ -1128,9 +727,7 @@ iris_memory/
     └── merge_task.py       # 合并任务
 ```
 
-**测试要求**：
-- `tests/tasks/test_scheduler.py`：调度器测试
-- `tests/tasks/test_forgetting_task.py`：遗忘任务测试
+**测试覆盖**：30个测试用例（`tests/tasks/`）
 
 ---
 

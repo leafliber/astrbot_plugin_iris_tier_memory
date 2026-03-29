@@ -486,3 +486,48 @@ class L2MemoryAdapter(Component):
         except Exception as e:
             logger.error(f"删除记忆失败：{e}", exc_info=True)
             return False
+    
+    async def evict_memories(self, memory_ids: List[str]) -> int:
+        """淘汰记忆条目（用于定时任务）
+        
+        批量删除指定的记忆条目，并记录淘汰日志。
+        
+        Args:
+            memory_ids: 要淘汰的记忆 ID 列表
+        
+        Returns:
+            实际删除的记忆数量
+        
+        Examples:
+            >>> deleted_count = await adapter.evict_memories(["mem_1", "mem_2"])
+            >>> print(deleted_count)
+            2
+        """
+        if not self._is_available or not memory_ids:
+            return 0
+        
+        try:
+            # 先获取要删除的记忆内容（用于日志）
+            loop = asyncio.get_event_loop()
+            entries_to_delete = await loop.run_in_executor(
+                None,
+                lambda: self._collection.get(ids=memory_ids)
+            )
+            
+            # 执行删除
+            success = await self.delete_entries(memory_ids)
+            
+            if success:
+                # 记录淘汰日志
+                if entries_to_delete["documents"]:
+                    logger.info(
+                        f"已淘汰 {len(memory_ids)} 条记忆：\n" +
+                        "\n".join(f"  - {doc[:100]}..." for doc in entries_to_delete["documents"][:5])
+                    )
+                return len(memory_ids)
+            
+            return 0
+            
+        except Exception as e:
+            logger.error(f"淘汰记忆失败：{e}", exc_info=True)
+            return 0
