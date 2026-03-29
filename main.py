@@ -40,7 +40,7 @@ from iris_memory.tools import (
     GetGroupProfileTool,
     GetUserProfileTool,
 )
-from iris_memory.web import register_routes
+# from iris_memory.web import register_routes  # TODO: Web 模块暂时禁用
 
 logger = get_logger("main")
 
@@ -71,6 +71,7 @@ class IrisTierMemoryPlugin(Star):
             config: AstrBot 用户配置
         """
         super().__init__(context)
+        self.context: Context = context
         
         # 初始化配置系统
         data_dir = Path(get_astrbot_data_path()) / "plugin_data" / "nonebot_plugin_iris_tier_memory"
@@ -85,12 +86,18 @@ class IrisTierMemoryPlugin(Star):
         # 注册 LLM Tool
         self._register_llm_tools()
         
-        # 注册 Web 路由（共享 AstrBot 端口）
-        try:
-            register_routes(context.app)
-            logger.info("✅ Web 模块已加载")
-        except Exception as e:
-            logger.error(f"❌ 加载 Web 模块失败：{e}", exc_info=True)
+        # TODO: Web 模块暂时禁用
+        # AstrBot Context 类没有 app 属性，无法直接注册 Quart Blueprint
+        # 可能的解决方案：
+        # 1. 使用 AstrBot 提供的 HTTP API 机制（待研究）
+        # 2. 将 Web 模块作为独立服务运行
+        # 3. 通过其他方式（如事件处理器）提供 Web 功能
+        
+        # try:
+        #     register_routes(context.app)
+        #     logger.info("✅ Web 模块已加载")
+        # except Exception as e:
+        #     logger.error(f"❌ 加载 Web 模块失败：{e}", exc_info=True)
         
         logger.info("Iris Tier Memory 插件已加载")
     
