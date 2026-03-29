@@ -12,16 +12,10 @@ from pathlib import Path
 from typing import Optional
 
 # 模块导入支持
-# 优先使用标准导入，如果失败则手动添加插件根目录到 Python 路径
-# 这样既支持通过 pip install -e . 安装，也支持直接运行
-try:
-    from iris_memory.config import init_config, Config
-except ImportError:
-    # 如果标准导入失败，添加插件根目录到 sys.path
-    plugin_root = Path(__file__).parent
-    if str(plugin_root) not in sys.path:
-        sys.path.insert(0, str(plugin_root))
-    from iris_memory.config import init_config, Config
+plugin_root = Path(__file__).parent
+if str(plugin_root) not in sys.path:
+    sys.path.insert(0, str(plugin_root))
+from iris_memory.config import init_config, Config
 
 from astrbot.api import AstrBotConfig
 from astrbot.api.event import filter, AstrMessageEvent
