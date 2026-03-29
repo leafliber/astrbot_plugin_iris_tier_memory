@@ -363,11 +363,9 @@ CREATE NODE TABLE IF NOT EXISTS Entity (
 
 ### ✅ 4.6 实现 LLM Tool：保存知识 (`iris_memory/tools/save_knowledge.py`)
 
-实现 `save_knowledge` Tool：
-- 允许 LLM 手动保存知识到图谱
+- 使用 `FunctionTool` 类实现（阶段7已优化）
 - 参数：`nodes`（节点列表）、`edges`（边列表）
-- 返回：操作结果描述
-- 支持 LLM 主动补充和调整知识
+- 用途：LLM主动补充知识到图谱
 
 ### ⏳ 4.7 集成到主程序 (`main.py`)
 
@@ -731,44 +729,44 @@ iris_memory/
 
 ---
 
-## 阶段 7：TOOL 钩子
+## 阶段 7：TOOL 钩子 ✅ **已完成**
 
 **目标**：LLM 可通过 Tool 调用保存/读取记忆、获取画像、修正错误。
 
-**前置依赖**：
-- ✅ 阶段1-6：配置系统、L1-L3、LLM 管理、定时任务
+**前置依赖**：✅ 阶段1-6
 
-**实现步骤**：
+**核心实现**：使用 `FunctionTool` 类（非装饰器）
 
-1. **创建 TOOL 钩子模块** (`iris_memory/tools/`)
-   - `save_memory.py`：保存记忆 Tool
-   - `read_memory.py`：读取记忆 Tool
-   - `get_group_profile.py`：获取群聊画像 Tool
-   - `get_user_profile.py`：获取用户画像 Tool
-   - `correct_memory.py`：修正记忆 Tool
+**已实现Tool**：
+- `SaveKnowledgeTool` - 保存知识到L3图谱
+- `SaveMemoryTool` - 保存记忆到L2
+- `ReadMemoryTool` - 从L2检索记忆
+- `CorrectMemoryTool` - 修正错误记忆（同步更新L2和L3）
+- `GetGroupProfileTool` - 获取群聊画像（占位符，阶段9实现）
+- `GetUserProfileTool` - 获取用户画像（占位符，阶段9实现）
 
-2. **使用 AstrBot Tool 装饰器**
-   - 使用 `@filter.llm_tool(name="tool_name")` 装饰器
-   - 实现各 Tool 功能
-   - 与 L1/L2/L3 模块集成
+**配置项**（隐藏配置）：
+- `tool_memory_max_content_length` - 记忆内容最大长度（默认500）
+- `tool_correction_require_confirmation` - 修正需确认（默认False）
+- `tool_timeout_ms` - Tool调用超时（默认2000）
+- `tool_read_max_results` - 读取记忆最大返回数（默认10）
 
 **完成标志**：
-- LLM 可通过 Tool 调用保存/读取记忆
+- ✅ LLM 可通过 Tool 调用保存/读取记忆
+- ✅ 所有 Tool 使用 FunctionTool 类实现
+- ✅ Tool 注册到 AstrBot 成功
+- ✅ 测试覆盖完整（tests/tools/）
 
 **阶段产物**：
 ```
-iris_memory/
-└── tools/                  # TOOL 钩子模块
-    ├── __init__.py
-    ├── save_memory.py
-    ├── read_memory.py
-    ├── get_group_profile.py
-    ├── get_user_profile.py
-    └── correct_memory.py
+iris_memory/tools/
+├── save_knowledge.py      # 知识图谱Tool（重写）
+├── save_memory.py         # 记忆保存Tool
+├── read_memory.py         # 记忆读取Tool
+├── correct_memory.py      # 记忆修正Tool
+├── get_group_profile.py   # 群聊画像Tool（占位符）
+└── get_user_profile.py    # 用户画像Tool（占位符）
 ```
-
-**测试要求**：
-- `tests/tools/` 目录下各 Tool 测试
 
 ---
 

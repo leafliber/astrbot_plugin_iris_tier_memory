@@ -26,6 +26,14 @@ from iris_memory.core import (
     preprocess_llm_request,
     handle_llm_response,
 )
+from iris_memory.tools import (
+    SaveKnowledgeTool,
+    SaveMemoryTool,
+    ReadMemoryTool,
+    CorrectMemoryTool,
+    GetGroupProfileTool,
+    GetUserProfileTool,
+)
 
 logger = get_logger("main")
 
@@ -67,7 +75,30 @@ class IrisTierMemoryPlugin(Star):
         self.component_manager: Optional[ComponentManager] = ComponentManager(components)
         self._initialized: bool = False
         
+        # 注册 LLM Tool
+        self._register_llm_tools()
+        
         logger.info("Iris Tier Memory 插件已加载")
+    
+    def _register_llm_tools(self) -> None:
+        """注册所有 LLM Tool 到 AstrBot"""
+        try:
+            tools = [
+                SaveKnowledgeTool(),
+                SaveMemoryTool(),
+                ReadMemoryTool(),
+                CorrectMemoryTool(),
+                GetGroupProfileTool(),
+                GetUserProfileTool(),
+            ]
+            
+            for tool in tools:
+                self.context.add_llm_tools(tool)
+            
+            logger.info(f"已注册 {len(tools)} 个 LLM Tool")
+        
+        except Exception as e:
+            logger.error(f"注册 LLM Tool 失败：{e}", exc_info=True)
     
     async def _ensure_initialized(self) -> None:
         """确保组件已初始化（延迟初始化模式）"""

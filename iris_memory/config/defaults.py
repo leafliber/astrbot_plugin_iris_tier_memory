@@ -124,6 +124,12 @@ class HiddenConfig:
     merge_similarity_threshold: float = 0.85    # 合并相似度阈值
     merge_batch_size: int = 10                  # 合并批处理大小
     eviction_batch_size: int = 100              # 淘汰批处理大小
+    
+    # Tool 配置参数
+    tool_memory_max_content_length: int = 500          # 记忆内容最大长度
+    tool_correction_require_confirmation: bool = False  # 修正需确认
+    tool_timeout_ms: int = 2000                        # Tool调用超时
+    tool_read_max_results: int = 10                    # 读取记忆最大返回数
 
 
 @dataclass

@@ -1,0 +1,79 @@
+"""获取用户画像 LLM Tool（占位符）"""
+
+from pydantic import Field
+from pydantic.dataclasses import dataclass
+from astrbot.core.agent.tool import FunctionTool, ToolExecResult
+from astrbot.core.agent.run_context import ContextWrapper
+from astrbot.core.astr_agent_context import AstrAgentContext
+from iris_memory.core import get_logger
+
+logger = get_logger("tools")
+
+
+@dataclass
+class GetUserProfileTool(FunctionTool[AstrAgentContext]):
+    """获取用户画像的Tool（占位符）
+    
+    此功能将在阶段9完整实现。
+    当前仅返回"功能开发中"提示。
+    """
+    
+    name: str = "get_user_profile"
+    description: str = "获取用户画像（功能开发中）"
+    parameters: dict = Field(
+        default_factory=lambda: {
+            "type": "object",
+            "properties": {
+                "user_id": {
+                    "type": "string",
+                    "description": "用户ID（可选，不传则自动获取当前用户）"
+                }
+            }
+        }
+    )
+    
+    async def call(
+        self,
+        context: ContextWrapper[AstrAgentContext],
+        **kwargs
+    ) -> ToolExecResult:
+        """执行获取用户画像操作（占位符）
+        
+        Args:
+            context: AstrBot执行上下文
+            **kwargs: Tool参数
+                - user_id: 用户ID（可选）
+        
+        Returns:
+            ToolExecResult: 包含提示信息的执行结果
+        """
+        try:
+            # 获取参数
+            user_id = kwargs.get("user_id", "")
+            
+            # 如果未传user_id，尝试从上下文获取
+            if not user_id:
+                event = context.context.event
+                from iris_memory.platform import get_adapter
+                adapter = get_adapter(event)
+                user_id = adapter.get_user_id(event) or "当前用户"
+                user_name = adapter.get_user_name(event) or "未知用户"
+            else:
+                user_name = user_id
+            
+            logger.info(f"获取用户画像（占位符）: user_id={user_id}")
+            
+            return ToolExecResult(
+                result=f"用户 {user_name} 的画像功能正在开发中，将在后续版本提供完整支持。\n\n"
+                       f"计划功能：\n"
+                       f"- 用户偏好分析\n"
+                       f"- 用户兴趣总结\n"
+                       f"- 用户行为模式\n"
+                       f"- 用户关系网络"
+            )
+        
+        except Exception as e:
+            logger.error(f"获取用户画像失败：{e}")
+            return ToolExecResult(
+                result=f"用户画像功能正在开发中，将在阶段9实现。"
+            )
