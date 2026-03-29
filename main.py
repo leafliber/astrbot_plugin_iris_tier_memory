@@ -7,15 +7,27 @@ Iris Tier Memory - AstrBot 分层记忆插件
 - L3: 知识图谱（KuzuDB）
 """
 
+import sys
 from pathlib import Path
 from typing import Optional
+
+# 模块导入支持
+# 优先使用标准导入，如果失败则手动添加插件根目录到 Python 路径
+# 这样既支持通过 pip install -e . 安装，也支持直接运行
+try:
+    from iris_memory.config import init_config, Config
+except ImportError:
+    # 如果标准导入失败，添加插件根目录到 sys.path
+    plugin_root = Path(__file__).parent
+    if str(plugin_root) not in sys.path:
+        sys.path.insert(0, str(plugin_root))
+    from iris_memory.config import init_config, Config
 
 from astrbot.api import AstrBotConfig
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
 from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 
-from iris_memory.config import init_config, Config
 from iris_memory.core import (
     ComponentManager,
     get_logger,
@@ -34,6 +46,7 @@ from iris_memory.tools import (
     GetGroupProfileTool,
     GetUserProfileTool,
 )
+from iris_memory.web import register_routes
 
 logger = get_logger("main")
 
@@ -77,6 +90,13 @@ class IrisTierMemoryPlugin(Star):
         
         # 注册 LLM Tool
         self._register_llm_tools()
+        
+        # 注册 Web 路由（共享 AstrBot 端口）
+        try:
+            register_routes(context.app)
+            logger.info("✅ Web 模块已加载")
+        except Exception as e:
+            logger.error(f"❌ 加载 Web 模块失败：{e}", exc_info=True)
         
         logger.info("Iris Tier Memory 插件已加载")
     
