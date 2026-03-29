@@ -63,7 +63,7 @@ class IrisTierMemoryPlugin(Star):
         logger.info(f"插件数据目录：{data_dir}")
         
         # 创建组件管理器（暂不初始化组件）
-        components = create_components()
+        components = create_components(context)
         self.component_manager: Optional[ComponentManager] = ComponentManager(components)
         self._initialized: bool = False
         

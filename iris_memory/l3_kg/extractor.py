@@ -51,7 +51,6 @@ class EntityExtractor:
             # 调用 LLM 提取
             response = await self.llm_manager.generate(
                 prompt=prompt,
-                temperature=self.config.get("entity_extraction_temperature", 0.3),
                 module="l3_kg_extraction"
             )
             

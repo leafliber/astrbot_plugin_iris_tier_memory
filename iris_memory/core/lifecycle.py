@@ -3,24 +3,35 @@
 
 负责组件的创建、初始化和清理等生命周期管理。
 """
-from typing import Optional, Tuple
+from typing import Optional, Tuple, TYPE_CHECKING
 
 from iris_memory.config import get_config
 from iris_memory.core import get_logger, ComponentManager, Component
 
+if TYPE_CHECKING:
+    from astrbot.api.star import Context
+
 logger = get_logger("lifecycle")
 
 
-def create_components() -> Tuple[Component, ...]:
+def create_components(context: "Context") -> Tuple[Component, ...]:
     """创建所有组件实例
     
     根据配置创建需要的组件实例，但暂不初始化。
+    
+    Args:
+        context: AstrBot Context 对象
     
     Returns:
         组件元组
     """
     config = get_config()
     components = []
+    
+    # 阶段5: LLM 管理器（最先创建，其他组件可能依赖）
+    from iris_memory.llm import LLMManager
+    components.append(LLMManager(context))
+    logger.debug("已添加 LLMManager 组件")
     
     # 阶段2: L1 消息缓冲
     if config.get("l1_buffer.enable"):
@@ -43,7 +54,6 @@ def create_components() -> Tuple[Component, ...]:
         logger.debug("已添加 L3KGAdapter 组件")
     
     # TODO: 后续阶段添加更多组件
-    # 阶段5: LLM 管理器
     # 阶段6: 定时任务调度器
     # 阶段9: 画像存储
     # 阶段10: 图片限额管理器

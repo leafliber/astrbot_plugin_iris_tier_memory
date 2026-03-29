@@ -114,6 +114,9 @@ class HiddenConfig:
     forgetting_lambda_kg: float = 0.01             # 知识图谱遗忘系数
     forgetting_threshold_kg: float = 0.2           # 知识图谱遗忘阈值
     kg_retention_days: int = 30                    # 知识图谱保留天数
+    
+    # LLM 调用管理参数
+    call_log_max_entries: int = 100         # 调用日志最大保留条数
 
 
 @dataclass

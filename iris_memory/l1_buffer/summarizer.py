@@ -2,16 +2,17 @@
 Iris Tier Memory - 总结器
 
 负责触发总结逻辑，调用 LLM 生成总结。
-阶段 2-4：预留接口，总结功能不可用
 阶段 5：LLMManager 实现后，总结功能正式可用
 """
 
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from iris_memory.core import get_logger
-from iris_memory.llm.caller import LLMCaller, PlaceholderLLMCaller
 from iris_memory.config import get_config
 from .models import ContextMessage, MessageQueue
+
+if TYPE_CHECKING:
+    from iris_memory.llm import LLMManager
 
 logger = get_logger("summarizer")
 
@@ -26,29 +27,27 @@ class Summarizer:
     负责检查触发条件、调用 LLM 生成总结。
     
     Attributes:
-        llm_caller: LLM 调用器实例
+        llm_manager: LLM 调用管理器实例
         provider: 总结使用的模型提供商
     
     Examples:
-        >>> from iris_memory.llm.caller import PlaceholderLLMCaller
-        >>> summarizer = Summarizer(llm_caller=PlaceholderLLMCaller())
+        >>> summarizer = Summarizer(llm_manager=llm_manager)
         >>> queue = MessageQueue(group_id="group_123")
         >>> await summarizer.summarize(queue)
-        None  # 阶段 2-4 返回 None
     """
     
     def __init__(
         self,
-        llm_caller: Optional[LLMCaller] = None,
+        llm_manager: "LLMManager",
         provider: str = ""
     ):
         """初始化总结器
         
         Args:
-            llm_caller: LLM 调用器实例（可选，默认使用占位实现）
+            llm_manager: LLM 调用管理器实例
             provider: 总结使用的模型提供商（留空使用默认）
         """
-        self.llm_caller = llm_caller or PlaceholderLLMCaller()
+        self.llm_manager = llm_manager
         self.provider = provider
         logger.info("总结器已初始化")
     
@@ -66,7 +65,7 @@ class Summarizer:
         Examples:
             >>> queue = MessageQueue(group_id="group_123")
             >>> queue.total_tokens = 5000  # 超过默认限制 4000
-            >>> summarizer = Summarizer()
+            >>> summarizer = Summarizer(llm_manager)
             >>> summarizer.should_summarize(queue)
             True
         """
@@ -95,17 +94,14 @@ class Summarizer:
         
         调用 LLM 生成消息队列的总结。
         
-        阶段 2-4：返回 None，不执行总结
-        阶段 5：调用 LLM 生成总结
-        
         Args:
             queue: 消息队列
         
         Returns:
-            总结文本（阶段 2-4 返回 None）
+            总结文本
         
         Raises:
-            Exception: LLM 调用失败时抛出（阶段 5 后）
+            Exception: LLM 调用失败时抛出
         """
         if queue.is_empty():
             logger.debug("队列为空，跳过总结")
@@ -118,18 +114,15 @@ class Summarizer:
             
             logger.info(f"开始总结队列，共 {len(queue)} 条消息，{queue.total_tokens} tokens")
             
-            # 调用 LLM（阶段 2-4 会抛出 NotImplementedError）
-            summary = await self.llm_caller.call(prompt, self.provider)
+            # 调用 LLMManager
+            summary = await self.llm_manager.generate(
+                prompt=prompt,
+                module="l1_summarizer",
+                provider_id=self.provider if self.provider else None
+            )
             
             logger.info(f"总结完成，长度：{len(summary)} 字符")
             return summary
-        
-        except NotImplementedError:
-            # 阶段 2-4：总结功能不可用，仅清空队列
-            logger.warning(
-                "总结功能尚未实现（阶段 5 完成），队列将被清空而不生成总结"
-            )
-            return None
         
         except Exception as e:
             logger.error(f"总结失败：{e}", exc_info=True)
