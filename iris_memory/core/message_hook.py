@@ -4,7 +4,7 @@
 负责处理用户发送的消息钩子，包括：
 - 添加用户消息到 L1 Buffer
 - 用户画像更新
-- 关键词检测（未来扩展）
+- 图片解析（all 模式）
 """
 from typing import TYPE_CHECKING, cast
 
@@ -29,7 +29,7 @@ async def handle_user_message(
     执行所有用户消息的处理逻辑（按顺序执行）：
     1. 添加用户消息到 L1 Buffer
     2. 用户画像更新
-    3. TODO: 关键词检测（阶段 7）
+    3. 图片解析（如果启用）
     
     Args:
         event: AstrBot 消息事件对象
@@ -37,8 +37,7 @@ async def handle_user_message(
     """
     await _add_to_l1_buffer(event, component_manager)
     await _update_user_profile(event, component_manager)
-    # TODO: 关键词检测
-    # await _detect_keywords(event, component_manager)
+    await _parse_images_if_enabled(event, component_manager)
 
 
 async def _add_to_l1_buffer(
@@ -165,3 +164,109 @@ async def update_l1_buffer(
     )
     
     logger.debug(f"已添加 {role} 消息到群聊 {group_id} 的 L1 Buffer")
+
+
+async def _parse_images_if_enabled(
+    event: "AstrMessageEvent",
+    component_manager: "ComponentManager"
+) -> None:
+    """解析图片并入队 L1 Buffer（内部函数）
+    
+    仅在 all 模式下解析所有图片。
+    related 模式在 LLM 请求钩子中处理。
+    
+    Args:
+        event: AstrBot 消息事件对象
+        component_manager: 组件管理器实例
+    """
+    # 1. 检查是否启用图片解析
+    config = get_config()
+    if not config.get("image_parsing.enable"):
+        return
+    
+    # 2. 获取解析模式
+    mode = config.get("image_parsing.parsing_mode", "related")
+    
+    # 3. 如果是 related 模式，不做任何事（等待 LLM 调用）
+    if mode == "related":
+        return
+    
+    # 4. all 模式：解析所有图片
+    if mode != "all":
+        logger.warning(f"未知的图片解析模式：{mode}")
+        return
+    
+    # 5. 从平台适配器获取图片列表
+    adapter = get_adapter(event)
+    images = adapter.get_images(event)
+    
+    if not images:
+        logger.debug("消息中无图片，跳过解析")
+        return
+    
+    # 6. 获取 ImageQuotaManager 组件
+    quota_manager = component_manager.get_component("image_quota")
+    if not quota_manager or not quota_manager.is_available:
+        logger.debug("图片解析配额管理器不可用，跳过解析")
+        return
+    
+    # 7. 检查配额
+    has_quota = await quota_manager.check_quota()
+    if not has_quota:
+        logger.info("图片解析配额已耗尽，跳过解析")
+        return
+    
+    # 8. 使用配额
+    quota_used = await quota_manager.use_quota(len(images))
+    if not quota_used:
+        logger.warning("图片解析配额使用失败")
+        return
+    
+    # 9. 获取 LLMManager 组件
+    llm_manager = component_manager.get_component("llm_manager")
+    if not llm_manager or not llm_manager.is_available:
+        logger.warning("LLM Manager 不可用，跳过图片解析")
+        return
+    
+    # 10. 创建 ImageParser
+    from iris_memory.image import ImageParser
+    from iris_memory.image.models import ImageInfo
+    
+    provider = config.get("image_parsing.provider", "")
+    parser = ImageParser(llm_manager, provider)
+    
+    # 11. 解析图片
+    logger.info(f"开始解析 {len(images)} 张图片（all 模式）")
+    
+    parse_results = await parser.parse_batch(images)
+    
+    # 12. 将解析结果入队 L1 Buffer
+    buffer = component_manager.get_component("l1_buffer")
+    if not buffer or not buffer.is_available:
+        logger.warning("L1 Buffer 不可用，无法入队图片解析结果")
+        return
+    
+    l1_buffer = cast("L1Buffer", buffer)
+    group_id = adapter.get_group_id(event)
+    user_id = adapter.get_user_id(event)
+    
+    success_count = 0
+    for result in parse_results:
+        if not result.success:
+            logger.warning(f"图片解析失败：{result.error_message}")
+            continue
+        
+        if not result.content:
+            logger.debug("图片解析结果为空，跳过入队")
+            continue
+        
+        # 入队解析结果
+        await l1_buffer.add_message(
+            group_id=group_id,
+            role="user",
+            content=f"[图片内容] {result.content}",
+            source=user_id
+        )
+        success_count += 1
+    
+    logger.info(f"已入队 {success_count}/{len(images)} 张图片的解析结果")

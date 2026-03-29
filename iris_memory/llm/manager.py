@@ -292,6 +292,75 @@ class LLMManager(Component):
         )
     
     # =========================================================================
+    # Vision 支持
+    # =========================================================================
+    
+    async def generate_with_images(
+        self,
+        prompt: str,
+        image_urls: List[str],
+        module: str = "default",
+        provider_id: Optional[str] = None,
+        **kwargs
+    ) -> str:
+        """生成文本响应（支持图片输入）
+        
+        构建 OpenAI Vision API 格式的 contexts，支持图片输入。
+        
+        Args:
+            prompt: 输入提示词
+            image_urls: 图片 URL 列表（支持 HTTP URL 或 base64 data URL）
+            module: 调用模块标识（用于统计），如 "image_parsing"
+            provider_id: Provider ID（留空使用模块配置或默认）
+            **kwargs: 其他参数
+        
+        Returns:
+            生成的文本响应
+        
+        Raises:
+            RuntimeError: LLMManager 未初始化
+            Exception: LLM 调用失败
+        
+        Examples:
+            >>> response = await manager.generate_with_images(
+            ...     prompt="这张图片是什么？",
+            ...     image_urls=["https://example.com/image.jpg"],
+            ...     module="image_parsing"
+            ... )
+        """
+        if not self._is_available:
+            raise RuntimeError("LLMManager 未初始化")
+        
+        # 构建多模态 content
+        content: List[Dict[str, Any]] = [
+            {"type": "text", "text": prompt}
+        ]
+        
+        # 添加图片
+        for url in image_urls:
+            content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": url
+                }
+            })
+        
+        # 构建 contexts
+        contexts = [{
+            "role": "user",
+            "content": content
+        }]
+        
+        # 调用 generate（传入空 prompt，因为 prompt 已包含在 contexts 中）
+        return await self.generate(
+            prompt="",  # prompt 已包含在 contexts 中
+            module=module,
+            provider_id=provider_id,
+            contexts=contexts,
+            **kwargs
+        )
+    
+    # =========================================================================
     # 统计接口
     # =========================================================================
     

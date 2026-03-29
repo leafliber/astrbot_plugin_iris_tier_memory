@@ -4,6 +4,7 @@ LLM 请求钩子处理模块
 负责处理 LLM 请求前的钩子逻辑，包括：
 - L1 上下文注入
 - 用户画像注入
+- 图片解析（related 模式）
 - 知识图谱检索结果注入（未来扩展）
 """
 from typing import TYPE_CHECKING, cast
@@ -33,7 +34,8 @@ async def preprocess_llm_request(
     执行所有 LLM 对话前的预处理逻辑（按顺序执行）：
     1. L1 上下文注入
     2. 用户画像注入
-    3. TODO: 知识图谱检索结果注入（阶段 4）
+    3. 图片解析（related 模式）
+    4. TODO: 知识图谱检索结果注入（阶段 4）
     
     Args:
         event: AstrBot 消息事件对象
@@ -42,6 +44,7 @@ async def preprocess_llm_request(
     """
     await _inject_l1_context(event, req, component_manager)
     await _inject_user_profile(event, req, component_manager)
+    await _parse_images_if_related_mode(event, req, component_manager)
     # TODO: 知识图谱检索结果注入
     # await _inject_knowledge_graph(event, req, component_manager)
 
@@ -210,3 +213,127 @@ def _format_profiles_for_injection(
         lines.append(f"⚠️ 用户禁忌话题: {', '.join(user_profile.taboo_topics)}")
     
     return chr(10).join(lines)
+
+
+async def _parse_images_if_related_mode(
+    event: "AstrMessageEvent",
+    req: "ProviderRequest",
+    component_manager: "ComponentManager"
+) -> None:
+    """解析图片并入队 L1 Buffer（related 模式）
+    
+    仅在 related 模式下解析相关图片。
+    all 模式已在消息钩子中处理。
+    
+    相关图片包括：
+    - 触发 LLM 的消息中的图片
+    - 触发 LLM 的消息所引用/回复的消息中的图片
+    
+    Args:
+        event: AstrBot 消息事件对象
+        req: LLM 提供者请求对象
+        component_manager: 组件管理器实例
+    """
+    # 1. 检查是否启用图片解析
+    config = get_config()
+    if not config.get("image_parsing.enable"):
+        return
+    
+    # 2. 获取解析模式
+    mode = config.get("image_parsing.parsing_mode", "related")
+    
+    # 3. 如果是 all 模式，不做任何事（已在消息钩子中处理）
+    if mode == "all":
+        return
+    
+    # 4. related 模式：解析相关图片
+    if mode != "related":
+        logger.warning(f"未知的图片解析模式：{mode}")
+        return
+    
+    # 5. 从平台适配器获取图片列表
+    adapter = get_adapter(event)
+    images = adapter.get_images(event)
+    
+    if not images:
+        logger.debug("消息中无图片，跳过解析")
+        return
+    
+    # 6. 获取 ImageQuotaManager 组件
+    quota_manager = component_manager.get_component("image_quota")
+    if not quota_manager or not quota_manager.is_available:
+        logger.debug("图片解析配额管理器不可用，跳过解析")
+        return
+    
+    # 7. 检查配额
+    has_quota = await quota_manager.check_quota()
+    if not has_quota:
+        logger.info("图片解析配额已耗尽，跳过解析")
+        return
+    
+    # 8. 使用配额
+    quota_used = await quota_manager.use_quota(len(images))
+    if not quota_used:
+        logger.warning("图片解析配额使用失败")
+        return
+    
+    # 9. 获取 LLMManager 组件
+    llm_manager = component_manager.get_component("llm_manager")
+    if not llm_manager or not llm_manager.is_available:
+        logger.warning("LLM Manager 不可用，跳过图片解析")
+        return
+    
+    # 10. 创建 ImageParser
+    from iris_memory.image import ImageParser
+    
+    provider = config.get("image_parsing.provider", "")
+    parser = ImageParser(llm_manager, provider)
+    
+    # 11. 解析图片
+    logger.info(f"开始解析 {len(images)} 张图片（related 模式）")
+    
+    parse_results = await parser.parse_batch(images)
+    
+    # 12. 将解析结果入队 L1 Buffer
+    buffer = component_manager.get_component("l1_buffer")
+    if not buffer or not buffer.is_available:
+        logger.warning("L1 Buffer 不可用，无法入队图片解析结果")
+        return
+    
+    l1_buffer = cast("L1Buffer", buffer)
+    group_id = adapter.get_group_id(event)
+    user_id = adapter.get_user_id(event)
+    
+    success_count = 0
+    for result in parse_results:
+        if not result.success:
+            logger.warning(f"图片解析失败：{result.error_message}")
+            continue
+        
+        if not result.content:
+            logger.debug("图片解析结果为空，跳过入队")
+            continue
+        
+        # 入队解析结果
+        await l1_buffer.add_message(
+            group_id=group_id,
+            role="user",
+            content=f"[图片内容] {result.content}",
+            source=user_id
+        )
+        success_count += 1
+    
+    logger.info(f"已入队 {success_count}/{len(images)} 张图片的解析结果")
+    
+    # 13. 将图片解析结果追加到 req.contexts
+    for result in parse_results:
+        if result.success and result.content:
+            if req.contexts is None:
+                req.contexts = []
+            req.contexts.append({
+                "role": "user",
+                "content": f"[图片内容] {result.content}"
+            })
+    
+    if success_count > 0:
+        logger.debug(f"已追加 {success_count} 条图片解析结果到 LLM 请求上下文")

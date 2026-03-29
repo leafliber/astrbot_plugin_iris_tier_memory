@@ -136,6 +136,12 @@ class HiddenConfig:
     profile_analysis_interval_hours: int = 24          # 分析任务间隔（小时）
     profile_max_messages_for_analysis: int = 50        # 分析时最大消息数
     profile_enable_version_control: bool = True        # 启用版本控制
+    
+    # 图片解析参数
+    image_parsing_timeout_ms: int = 30000              # 图片解析超时（毫秒）
+    image_parsing_max_size_kb: int = 4096              # 最大图片大小（KB）
+    image_parsing_supported_formats: str = "jpg,jpeg,png,gif,webp"  # 支持的图片格式
+    image_parsing_fallback_on_error: bool = True       # 解析失败时是否入队原始消息
 
 
 @dataclass

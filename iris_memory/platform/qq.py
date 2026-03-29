@@ -14,11 +14,10 @@ OneBot11 协议参考：
 - 用户角色：event.sender.role（owner/admin/member）
 """
 
-from typing import Any
+from typing import Any, List
 
 from iris_memory.core import get_logger
 from iris_memory.platform.base import PlatformAdapter
-
 
 logger = get_logger("platform.qq")
 
@@ -216,3 +215,169 @@ class OneBot11Adapter(PlatformAdapter):
             return bool(group_id)
         except Exception:
             return False
+    
+    def get_images(self, event: Any) -> List["ImageInfo"]:
+        """获取消息中的图片列表
+        
+        从 OneBot11 消息段中提取图片信息。
+        支持提取：
+        - 当前消息中的图片
+        - 引用/回复消息中的图片
+        
+        Args:
+            event: AstrBot 消息事件对象
+        
+        Returns:
+            图片信息列表
+        """
+        from iris_memory.image.models import ImageInfo
+        
+        images: List[ImageInfo] = []
+        
+        try:
+            # 获取原始消息
+            raw_msg = self.get_raw_message(event)
+            if not raw_msg:
+                return images
+            
+            # 提取当前消息中的图片
+            images.extend(self._extract_images_from_message(raw_msg, "user"))
+            
+            # 提取引用/回复消息中的图片
+            images.extend(self._extract_reply_images(raw_msg))
+            
+            logger.debug(f"从消息中提取到 {len(images)} 张图片")
+            return images
+        
+        except Exception as e:
+            logger.error(f"提取图片信息失败: {e}")
+            return images
+    
+    def _extract_images_from_message(
+        self, 
+        raw_msg: dict[str, Any], 
+        source: str = "user"
+    ) -> List["ImageInfo"]:
+        """从消息段中提取图片
+        
+        Args:
+            raw_msg: 原始消息字典
+            source: 图片来源（user/forward）
+        
+        Returns:
+            图片信息列表
+        """
+        from iris_memory.image.models import ImageInfo
+        
+        images: List[ImageInfo] = []
+        
+        # OneBot11 消息格式：
+        # { "message": [{ "type": "image", "data": { "url": "...", "file": "..." } }] }
+        # 或
+        # { "message": "[CQ:image,file=...,url=...]" }
+        
+        message_segments = raw_msg.get("message", [])
+        
+        # 如果 message 是字符串（CQ码格式），跳过
+        if isinstance(message_segments, str):
+            logger.debug("消息为 CQ 码格式，暂不支持图片提取")
+            return images
+        
+        # 遍历消息段
+        if not isinstance(message_segments, list):
+            return images
+        
+        for segment in message_segments:
+            if not isinstance(segment, dict):
+                continue
+            
+            # 检查是否为图片段
+            if segment.get("type") == "image":
+                data = segment.get("data", {})
+                
+                image_info = ImageInfo(
+                    url=data.get("url"),
+                    file_path=data.get("file"),
+                    format=self._detect_image_format(data.get("url", "")),
+                    size_kb=0,  # OneBot11 通常不提供大小信息
+                    source=source,
+                    message_id=raw_msg.get("message_id", "")
+                )
+                
+                images.append(image_info)
+        
+        return images
+    
+    def _extract_reply_images(self, raw_msg: dict[str, Any]) -> List["ImageInfo"]:
+        """提取引用/回复消息中的图片
+        
+        Args:
+            raw_msg: 原始消息字典
+        
+        Returns:
+            图片信息列表
+        """
+        from iris_memory.image.models import ImageInfo
+        
+        images: List[ImageInfo] = []
+        
+        message_segments = raw_msg.get("message", [])
+        
+        if not isinstance(message_segments, list):
+            return images
+        
+        for segment in message_segments:
+            if not isinstance(segment, dict):
+                continue
+            
+            # 检查是否为回复段
+            if segment.get("type") == "reply":
+                # 回复消息可能包含原始消息内容
+                # 格式因实现而异，这里尝试提取
+                data = segment.get("data", {})
+                
+                # 某些实现会在 data 中包含原始消息段
+                if "content" in data:
+                    # content 可能是消息段数组
+                    content = data["content"]
+                    if isinstance(content, list):
+                        images.extend(self._extract_images_from_message(
+                            {"message": content}, 
+                            "forward"
+                        ))
+                
+                # 某些实现会直接包含图片信息
+                # 这里做兜底处理
+                break
+        
+        return images
+    
+    def _detect_image_format(self, url: str) -> str:
+        """检测图片格式
+        
+        从 URL 或文件名推断图片格式。
+        
+        Args:
+            url: 图片 URL 或文件路径
+        
+        Returns:
+            图片格式（jpg/jpeg/png/gif/webp）
+        """
+        if not url:
+            return ""
+        
+        # 转小写
+        url_lower = url.lower()
+        
+        # 检查常见格式
+        if ".jpg" in url_lower or ".jpeg" in url_lower:
+            return "jpg"
+        elif ".png" in url_lower:
+            return "png"
+        elif ".gif" in url_lower:
+            return "gif"
+        elif ".webp" in url_lower:
+            return "webp"
+        
+        # 默认返回空
+        return ""

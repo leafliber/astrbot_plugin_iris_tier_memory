@@ -64,8 +64,11 @@ def create_components(context: "Context") -> Tuple[Component, ...]:
         components.append(ProfileStorage(context))
         logger.debug("已添加 ProfileStorage 组件")
     
-    # TODO: 后续阶段添加更多组件
     # 阶段10: 图片限额管理器
+    if config.get("image_parsing.enable"):
+        from iris_memory.image import ImageQuotaManager
+        components.append(ImageQuotaManager(context))
+        logger.debug("已添加 ImageQuotaManager 组件")
     
     return tuple(components)
 
