@@ -9,22 +9,27 @@
 - **后端**：Quart (异步 Flask-like 框架)
 - **前端**：Vue.js 3 + Vuetify 3 + TypeScript
 - **认证**：复用 AstrBot Dashboard JWT
-- **端口**：共享 AstrBot 端口 6185
+- **端口**：独立端口 9967（可配置）
 
 ## 🚀 快速开始
 
 ### 后端部署
 
-后端已集成到插件中，无需额外配置。启动 AstrBot 后，API 自动可用：
+后端已集成到插件中，插件加载时自动启动独立 HTTP 服务器：
 
-```bash
-python main.py
-```
+**配置方式**（在 AstrBot 管理界面配置）：
+- `web.enable`: 是否启用 Web 服务器（默认 `true`）
+- `web.host`: 监听地址（默认 `0.0.0.0`）
+- `web.port`: 独立端口（默认 `9967`）
 
-API 地址：
-- `http://localhost:6185/api/iris/memory/l2/search`
-- `http://localhost:6185/api/iris/profile/group/:id`
-- `http://localhost:6185/api/iris/stats/token`
+**启动后访问**：
+- API: `http://localhost:9967/api/iris/memory/l2/search`
+- 前端: `http://localhost:9967/iris`
+
+**端口说明**：
+- Web 服务器使用独立端口（默认 9967），与 AstrBot 主端口（6185）分离
+- 独立端口设计避免了 AstrBot StarContext 无法暴露 Quart app 实例的问题
+- 支持多插件并行，不会产生端口冲突
 
 ### 前端开发
 
@@ -53,7 +58,7 @@ npm run build
 
 #### 4. 访问 Web 界面
 
-构建完成后，访问：`http://localhost:6185/iris`
+构建完成后，访问：`http://localhost:9967/iris`（或配置的端口）
 
 ## 📁 项目结构
 
@@ -88,10 +93,13 @@ iris_memory/web/
 
 ### 认证流程
 
-1. 用户登录 AstrBot Dashboard
+1. 用户登录 AstrBot Dashboard (`http://localhost:6185`)
 2. JWT Token 存储在 Cookie 中
-3. 前端自动携带 Cookie 访问 API
-4. 后端验证 JWT 签名和用户身份
+3. 前端访问 Iris Memory API (`http://localhost:9967/api/iris/*`)
+4. 浏览器自动携带 Cookie
+5. 后端验证 JWT 签名和用户身份
+
+**注意**：由于独立端口部署，需要确保浏览器支持跨端口 Cookie 携带（SameSite=None）。
 
 ### 访问控制
 
@@ -194,6 +202,19 @@ npm run test
 
 ## 🔧 故障排查
 
+### 端口冲突
+
+如果 9967 端口被占用：
+1. 修改配置：在 AstrBot 管理界面将 `web.port` 改为其他端口
+2. 或暂时禁用 Web 服务器：`web.enable = false`
+
+### 跨域 Cookie 问题
+
+如果浏览器不携带 Cookie：
+1. 确认 AstrBot 版本 > 3.5.17
+2. 检查浏览器设置：允许第三方 Cookie
+3. 或使用相同端口部署（需要 AstrBot 支持）
+
 ### 前端构建失败
 
 确保已安装 Node.js 18+ 和 npm：
@@ -207,7 +228,8 @@ npm --version
 
 1. 确认 AstrBot 版本 > 3.5.17
 2. 检查 `data/cmd_config.json` 中是否存在 `jwt_secret`
-3. 重新登录 AstrBot Dashboard
+3. 重新登录 AstrBot Dashboard (`http://localhost:6185`)
+4. 清除浏览器 Cookie 后重新登录
 
 ### API 503 错误
 

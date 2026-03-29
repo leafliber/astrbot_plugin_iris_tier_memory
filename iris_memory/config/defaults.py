@@ -85,6 +85,14 @@ class ScheduledTasksConfig:
 
 
 @dataclass
+class WebConfig:
+    """Web 服务器配置"""
+    enable: bool = True
+    host: str = "0.0.0.0"
+    port: int = 9967
+
+
+@dataclass
 class HiddenConfig:
     """隐藏配置(内部参数)
     
@@ -158,6 +166,7 @@ class Defaults:
     enhancement: EnhancementConfig = field(default_factory=EnhancementConfig)
     isolation_config: IsolationConfig = field(default_factory=IsolationConfig)
     scheduled_tasks: ScheduledTasksConfig = field(default_factory=ScheduledTasksConfig)
+    web: WebConfig = field(default_factory=WebConfig)
     hidden: HiddenConfig = field(default_factory=HiddenConfig)
     
     def get_by_flat_key(self, flat_key: str) -> Optional[object]:

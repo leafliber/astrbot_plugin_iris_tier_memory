@@ -262,5 +262,31 @@
         "hint": "合并碎片化相似记忆"
       }
     }
+  },
+
+  "web": {
+    "type": "object",
+    "description": "Web 服务器",
+    "hint": "独立 HTTP 服务器，提供 Web API 和前端界面",
+    "items": {
+      "enable": {
+        "type": "bool",
+        "default": true,
+        "description": "启用 Web 服务器",
+        "hint": "启动独立的 HTTP 服务器提供管理界面"
+      },
+      "host": {
+        "type": "string",
+        "default": "0.0.0.0",
+        "description": "监听地址",
+        "hint": "0.0.0.0 允许外部访问，127.0.0.1 仅本机访问"
+      },
+      "port": {
+        "type": "int",
+        "default": 9967,
+        "description": "Web 服务器端口",
+        "hint": "独立端口，避免与 AstrBot 主端口冲突"
+      }
+    }
   }
 }

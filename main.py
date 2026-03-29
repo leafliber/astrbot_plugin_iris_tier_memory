@@ -9,7 +9,7 @@ Iris Tier Memory - AstrBot 分层记忆插件
 
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 
 # 模块导入支持
 plugin_root = Path(__file__).parent
@@ -40,7 +40,7 @@ from iris_memory.tools import (
     GetGroupProfileTool,
     GetUserProfileTool,
 )
-# from iris_memory.web import register_routes  # TODO: Web 模块暂时禁用
+from iris_memory.web import WebServer
 
 logger = get_logger("main")
 
@@ -86,18 +86,10 @@ class IrisTierMemoryPlugin(Star):
         # 注册 LLM Tool
         self._register_llm_tools()
         
-        # TODO: Web 模块暂时禁用
-        # AstrBot Context 类没有 app 属性，无法直接注册 Quart Blueprint
-        # 可能的解决方案：
-        # 1. 使用 AstrBot 提供的 HTTP API 机制（待研究）
-        # 2. 将 Web 模块作为独立服务运行
-        # 3. 通过其他方式（如事件处理器）提供 Web 功能
-        
-        # try:
-        #     register_routes(context.app)
-        #     logger.info("✅ Web 模块已加载")
-        # except Exception as e:
-        #     logger.error(f"❌ 加载 Web 模块失败：{e}", exc_info=True)
+        # 启动 Web 服务器（如果启用）
+        self.web_server: Optional[WebServer] = None
+        if self.config.get("web.enable"):
+            self._start_web_server()
         
         logger.info("Iris Tier Memory 插件已加载")
     
@@ -121,6 +113,21 @@ class IrisTierMemoryPlugin(Star):
         except Exception as e:
             logger.error(f"注册 LLM Tool 失败：{e}", exc_info=True)
     
+    def _start_web_server(self) -> None:
+        """启动 Web 服务器"""
+        try:
+            # 从配置获取值（使用 cast 解决类型检查问题）
+            host = cast(str, self.config.get("web.host", "0.0.0.0"))
+            port = cast(int, self.config.get("web.port", 9967))
+            
+            self.web_server = WebServer(port=port, host=host)
+            self.web_server.start()
+            
+            logger.info(f"✅ Web 管理界面已启动: http://{host}:{port}/iris")
+        
+        except Exception as e:
+            logger.error(f"启动 Web 服务器失败：{e}", exc_info=True)
+    
     async def _ensure_initialized(self) -> None:
         """确保组件已初始化（延迟初始化模式）"""
         if self._initialized:
@@ -132,6 +139,12 @@ class IrisTierMemoryPlugin(Star):
     async def terminate(self):
         """插件卸载时的清理钩子"""
         logger.info("开始关闭插件组件...")
+        
+        # 关闭 Web 服务器
+        if self.web_server:
+            self.web_server.shutdown()
+        
+        # 关闭组件
         await shutdown_components(self.component_manager)
         logger.info("Iris Tier Memory 插件已卸载")
     

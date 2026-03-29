@@ -2,29 +2,60 @@
 Web 模块 - 提供前后端分离的 Web 界面
 
 架构：
-- 后端：Quart API（共享 AstrBot 端口）
+- 后端：Quart API（独立端口）
 - 前端：Vue.js 3 SPA（构建后由 Quart 托管）
 - 认证：复用 AstrBot Dashboard JWT
 
 使用方式：
-    from iris_memory.web import register_routes
+    # 方式1：独立 HTTP 服务器（推荐）
+    from iris_memory.web import create_app, WebServer
     
-    # 在插件入口注册路由
+    server = WebServer(port=9967)
+    server.start()
+    
+    # 方式2：注册到现有应用（需要 app 实例）
+    from iris_memory.web import register_routes
     register_routes(context.app)
 """
-from quart import Blueprint, send_from_directory
+from quart import Blueprint, send_from_directory, Quart
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from .routes.memory import memory_bp
 from .routes.profile import profile_bp
 from .routes.stats import stats_bp
 from .auth import dashboard_auth
+from .server import WebServer
 from iris_memory.core import get_logger
 
 logger = get_logger("web")
 
-__all__ = ['register_routes', 'dashboard_auth']
+__all__ = ['create_app', 'register_routes', 'dashboard_auth', 'WebServer']
+
+
+def create_app() -> Quart:
+    """
+    创建独立的 Quart 应用实例
+    
+    Returns:
+        Quart 应用实例，已注册所有路由
+    
+    使用场景：
+        用于独立 HTTP 服务器，不依赖 AstrBot 主应用。
+    
+    Example:
+        >>> from iris_memory.web import create_app, WebServer
+        >>> app = create_app()
+        >>> server = WebServer(port=9967)
+        >>> server.start()
+    """
+    app = Quart(__name__)
+    
+    # 注册所有路由
+    register_routes(app)
+    
+    logger.info("✅ 已创建独立 Quart 应用")
+    return app
 
 
 def register_routes(app: Any) -> None:
