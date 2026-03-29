@@ -174,6 +174,7 @@ __marimo__/
 
 # docs
 docs/
+/*.md
 
 # IDE
 .codebuddy
@@ -185,3 +186,5 @@ CLAUDE.md
 # temp files
 /data
 pyrightconfig.json
+/docker-data
+node_modules/
