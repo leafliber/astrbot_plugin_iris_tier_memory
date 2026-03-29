@@ -156,7 +156,8 @@ class DashboardAuth:
         config_path = Path("data/cmd_config.json")
         if config_path.exists():
             try:
-                with open(config_path, 'r', encoding='utf-8') as f:
+                # 使用 utf-8-sig 自动处理 BOM (Byte Order Mark)
+                with open(config_path, 'r', encoding='utf-8-sig') as f:
                     return json.load(f)
             except Exception as e:
                 logger.error(f"加载Dashboard配置失败：{e}")
