@@ -310,743 +310,75 @@ CREATE NODE TABLE IF NOT EXISTS Entity (
 
 ### ✅ 4.1 创建数据模型 (`iris_memory/l3_kg/models.py`)
 
-```python
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Optional
-import hashlib
-
-# 节点类型白名单
-NODE_TYPE_WHITELIST = {"Person", "Event", "Concept", "Location", "Item", "Topic"}
-
-# 关系类型白名单
-RELATION_TYPE_WHITELIST = {
-    "KNOWS", "MENTIONED_IN", "RELATED_TO", 
-    "PART_OF", "LOCATED_AT", "HAPPENED_AT"
-}
-
-@dataclass
-class GraphNode:
-    """图谱节点"""
-    id: str                                    # 节点唯一ID（基于内容hash）
-    label: str                                 # 节点类型标签（动态）
-    name: str                                  # 实体名称
-    content: str                               # 完整描述内容
-    confidence: float = 1.0                    # 置信度 [0.3, 1.0]
-    access_count: int = 0                      # 访问次数
-    last_access_time: Optional[datetime] = None
-    created_time: datetime = field(default_factory=datetime.now)
-    source_memory_id: Optional[str] = None     # 来源记忆ID
-    group_id: Optional[str] = None             # 群聊ID（用于隔离）
-    properties: dict = field(default_factory=dict)  # 扩展属性
-    
-    def generate_id(self) -> str:
-        """基于内容生成唯一ID"""
-        content_hash = hashlib.md5(
-            f"{self.label}:{self.name}:{self.content}".encode()
-        ).hexdigest()
-        return f"{self.label.lower()}_{content_hash[:12]}"
-
-@dataclass
-class GraphEdge:
-    """图谱边"""
-    source_id: str                             # 源节点ID
-    target_id: str                             # 目标节点ID
-    relation_type: str                         # 关系类型（动态）
-    weight: float = 1.0                        # 边权重 [0.0, 1.0]
-    confidence: float = 1.0                    # 置信度
-    access_count: int = 0                      # 访问次数
-    last_access_time: Optional[datetime] = None
-    created_time: datetime = field(default_factory=datetime.now)
-    source_memory_id: Optional[str] = None     # 来源记忆ID
-    properties: dict = field(default_factory=dict)
-    
-    def generate_id(self) -> str:
-        """生成边唯一标识"""
-        return f"{self.source_id}_{self.relation_type}_{self.target_id}"
-
-@dataclass
-class ExtractionResult:
-    """实体提取结果"""
-    nodes: list[GraphNode] = field(default_factory=list)
-    edges: list[GraphEdge] = field(default_factory=list)
-    extraction_confidence: float = 1.0         # 提取置信度
-```
+定义数据结构和类型白名单：
+- `GraphNode` - 图谱节点（ID 基于 hash 生成）
+- `GraphEdge` - 图谱边
+- `ExtractionResult` - 提取结果
+- `NODE_TYPE_WHITELIST` - 节点类型白名单（Person, Event, Concept, Location, Item, Topic）
+- `RELATION_TYPE_WHITELIST` - 关系类型白名单（KNOWS, MENTIONED_IN, RELATED_TO 等）
 
 ### ✅ 4.2 实现 KuzuDB 适配器 (`iris_memory/l3_kg/adapter.py`)
 
-```python
-from iris_memory.core import Component, get_logger
-from iris_memory.config import get_config
-import kuzu
-from pathlib import Path
-from typing import Optional
-
-logger = get_logger("l3_kg")
-
-class L3KGAdapter(Component):
-    """KuzuDB 图谱适配器"""
-    
-    @property
-    def name(self) -> str:
-        return "l3_kg"
-    
-    async def initialize(self) -> None:
-        config = get_config()
-        
-        # 检查是否启用
-        if not config.get("l3_kg.enable"):
-            logger.info("L3 知识图谱未启用")
-            self._is_available = False
-            return
-        
-        # 初始化 KuzuDB
-        self._persist_dir = config.data_dir / "kuzu"
-        self._persist_dir.mkdir(parents=True, exist_ok=True)
-        
-        try:
-            # 创建数据库连接
-            self._db = kuzu.Database(str(self._persist_dir))
-            self._conn = kuzu.Connection(self._db)
-            
-            # 创建 schema
-            await self._create_schema()
-            
-            self._is_available = True
-            logger.info(f"KuzuDB 初始化成功：{self._persist_dir}")
-        except Exception as e:
-            logger.error(f"KuzuDB 初始化失败：{e}")
-            self._is_available = False
-    
-    async def _create_schema(self):
-        """创建图谱 schema"""
-        # 创建节点表（动态类型通过 label 字段实现）
-        self._conn.execute("""
-            CREATE NODE TABLE IF NOT EXISTS Entity (
-                id STRING PRIMARY KEY,
-                label STRING,
-                name STRING,
-                content STRING,
-                confidence DOUBLE,                   -- ✅ 使用 DOUBLE（精度更高）
-                access_count INT64,
-                last_access_time TIMESTAMP,
-                created_time TIMESTAMP,
-                source_memory_id STRING,
-                group_id STRING,
-                properties MAP<STRING, STRING>       -- ✅ 使用 MAP 类型（类型安全）
-            )
-        """)
-        
-        # 创建关系表（动态类型通过 relation_type 字段实现）
-        self._conn.execute("""
-            CREATE REL TABLE IF NOT EXISTS Related (
-                FROM Entity TO Entity,
-                relation_type STRING,
-                weight DOUBLE,                        -- ✅ 使用 DOUBLE（精度更高）
-                confidence DOUBLE,                    -- ✅ 使用 DOUBLE（精度更高）
-                access_count INT64,
-                last_access_time TIMESTAMP,
-                created_time TIMESTAMP,
-                source_memory_id STRING,
-                properties MAP<STRING, STRING>        -- ✅ 使用 MAP 类型（类型安全）
-            )
-        """)
-        
-        logger.debug("KuzuDB schema 创建完成")
-    
-    async def add_node(self, node: GraphNode) -> bool:
-        """添加节点"""
-        if not self._is_available:
-            return False
-        
-        try:
-            query = """
-                MERGE (e:Entity {id: $id})
-                SET e.label = $label,
-                    e.name = $name,
-                    e.content = $content,
-                    e.confidence = $confidence,
-                    e.access_count = $access_count,
-                    e.last_access_time = $last_access_time,
-                    e.created_time = $created_time,
-                    e.source_memory_id = $source_memory_id,
-                    e.group_id = $group_id,
-                    e.properties = $properties
-            """
-            self._conn.execute(query, {
-                "id": node.id,
-                "label": node.label,
-                "name": node.name,
-                "content": node.content,
-                "confidence": node.confidence,
-                "access_count": node.access_count,
-                "last_access_time": node.last_access_time or datetime.now(),
-                "created_time": node.created_time,
-                "source_memory_id": node.source_memory_id,
-                "group_id": node.group_id,
-                "properties": json.dumps(node.properties)
-            })
-            return True
-        except Exception as e:
-            logger.error(f"添加节点失败：{e}")
-            return False
-    
-    async def add_edge(self, edge: GraphEdge) -> bool:
-        """添加关系边"""
-        if not self._is_available:
-            return False
-        
-        try:
-            query = """
-                MATCH (src:Entity {id: $source_id})
-                MATCH (tgt:Entity {id: $target_id})
-                MERGE (src)-[r:Related {relation_type: $relation_type}]->(tgt)
-                SET r.weight = $weight,
-                    r.confidence = $confidence,
-                    r.access_count = $access_count,
-                    r.last_access_time = $last_access_time,
-                    r.created_time = $created_time,
-                    r.source_memory_id = $source_memory_id,
-                    r.properties = $properties
-            """
-            self._conn.execute(query, {
-                "source_id": edge.source_id,
-                "target_id": edge.target_id,
-                "relation_type": edge.relation_type,
-                "weight": edge.weight,
-                "confidence": edge.confidence,
-                "access_count": edge.access_count,
-                "last_access_time": edge.last_access_time or datetime.now(),
-                "created_time": edge.created_time,
-                "source_memory_id": edge.source_memory_id,
-                "properties": json.dumps(edge.properties)
-            })
-            return True
-        except Exception as e:
-            logger.error(f"添加边失败：{e}")
-            return False
-    
-    async def expand_from_nodes(
-        self, 
-        node_ids: list[str], 
-        max_depth: int = 2,
-        group_id: Optional[str] = None
-    ) -> tuple[list[dict], list[dict]]:
-        """路径扩展检索
-        
-        从指定节点出发，查找相关路径
-        返回：(节点列表, 边列表)
-        """
-        if not self._is_available:
-            return [], []
-        
-        try:
-            # 构建路径查询
-            query = """
-                MATCH path = (start:Entity)-[r:Related*1..%d]-(end:Entity)
-                WHERE start.id IN $node_ids
-                AND ($group_id IS NULL OR start.group_id = $group_id)
-                RETURN 
-                    nodes(path) as nodes,
-                    relationships(path) as edges
-            """ % max_depth
-            
-            result = self._conn.execute(query, {
-                "node_ids": node_ids,
-                "group_id": group_id
-            })
-            
-            nodes = []
-            edges = []
-            for row in result:
-                nodes.extend(row["nodes"])
-                edges.extend(row["edges"])
-            
-            # 去重
-            nodes = list({n["id"]: n for n in nodes}.values())
-            edges = list({f"{e['source']}-{e['relation_type']}-{e['target']}": e for e in edges}.values())
-            
-            return nodes, edges
-        except Exception as e:
-            logger.error(f"路径扩展检索失败：{e}")
-            return [], []
-    
-    async def get_stats(self) -> dict:
-        """获取图谱统计信息"""
-        if not self._is_available:
-            return {"available": False}
-        
-        try:
-            node_count = self._conn.execute("MATCH (e:Entity) RETURN COUNT(e) as count").get_next()[0]
-            edge_count = self._conn.execute("MATCH ()-[r:Related]->() RETURN COUNT(r) as count").get_next()[0]
-            
-            return {
-                "available": True,
-                "node_count": node_count,
-                "edge_count": edge_count,
-                "persist_dir": str(self._persist_dir)
-            }
-        except Exception as e:
-            logger.error(f"获取图谱统计失败：{e}")
-            return {"available": False}
-    
-    async def shutdown(self) -> None:
-        if self._conn:
-            self._conn.close()
-        if self._db:
-            self._db.close()
-        self._is_available = False
-        logger.info("KuzuDB 已关闭")
-```
+实现 `L3KGAdapter` 类（Component 子类）：
+- 初始化 KuzuDB 连接和 schema
+- `add_node(node: GraphNode)` - 添加节点
+- `add_edge(edge: GraphEdge)` - 添加关系边
+- `expand_from_nodes(node_ids, max_depth, group_id)` - 路径扩展检索
+- `get_stats()` - 获取图谱统计信息
+- 自动降级：KuzuDB 不可用时设置 `_is_available = False`
 
 ### ✅ 4.3 实现实体提取器 (`iris_memory/l3_kg/extractor.py`)
 
-```python
-from iris_memory.core import get_logger
-from iris_memory.config import get_config
-from .models import GraphNode, GraphEdge, ExtractionResult, NODE_TYPE_WHITELIST, RELATION_TYPE_WHITELIST
-import json
+实现 `EntityExtractor` 类：
+- `extract_from_text(text, context)` - 从文本中提取实体和关系
+- `_build_extraction_prompt(text)` - 构建提取 prompt（包含白名单和规则）
+- `_parse_extraction_result(response, context)` - 解析 LLM 返回的 JSON 结果
 
-logger = get_logger("l3_kg")
-
-class EntityExtractor:
-    """实体和关系提取器"""
-    
-    def __init__(self, llm_manager):
-        self.llm_manager = llm_manager
-        self.config = get_config()
-    
-    async def extract_from_text(
-        self, 
-        text: str, 
-        context: dict = None
-    ) -> ExtractionResult:
-        """从文本中提取实体和关系
-        
-        Args:
-            text: 待提取的文本（总结内容）
-            context: 上下文信息（group_id, source_memory_id等）
-        
-        Returns:
-            ExtractionResult: 提取结果
-        """
-        # 构建提取 prompt
-        prompt = self._build_extraction_prompt(text)
-        
-        try:
-            # 调用 LLM 提取
-            response = await self.llm_manager.generate(
-                prompt=prompt,
-                temperature=0.3,  # 低温度保证稳定性
-                module="l3_kg_extraction"
-            )
-            
-            # 解析提取结果
-            result = self._parse_extraction_result(response, context)
-            
-            logger.info(
-                f"实体提取完成：{len(result.nodes)} 个节点，"
-                f"{len(result.edges)} 条边"
-            )
-            
-            return result
-        except Exception as e:
-            logger.error(f"实体提取失败：{e}")
-            return ExtractionResult()
-    
-    def _build_extraction_prompt(self, text: str) -> str:
-        """构建提取 prompt"""
-        return f"""从以下文本中提取实体和关系。
-
-## 节点类型白名单（优先使用）
-{', '.join(NODE_TYPE_WHITELIST)}
-
-## 关系类型白名单（优先使用）
-{', '.join(RELATION_TYPE_WHITELIST)}
-
-## 提取规则
-1. 识别文本中的关键实体（人物、事件、概念、地点、物品、话题）
-2. 识别实体之间的关系
-3. 如果实体类型不在白名单中，可以创建新类型，但要保持命名规范
-4. 如果关系类型不在白名单中，可以创建新类型
-5. 评估提取置信度（0.3-1.0）
-
-## 输出格式（JSON）
-{{
-  "nodes": [
-    {{
-      "label": "Person",
-      "name": "实体名称",
-      "content": "实体描述",
-      "confidence": 0.9
-    }}
-  ],
-  "edges": [
-    {{
-      "source_name": "源实体名称",
-      "target_name": "目标实体名称",
-      "relation_type": "KNOWS",
-      "confidence": 0.8
-    }}
-  ],
-  "extraction_confidence": 0.85
-}}
-
-## 待提取文本
-{text}
-
-## 输出
-请严格按照 JSON 格式输出，不要添加任何其他内容。"""
-
-    def _parse_extraction_result(
-        self, 
-        response: str, 
-        context: dict
-    ) -> ExtractionResult:
-        """解析 LLM 提取结果"""
-        try:
-            # 清理响应（去除 markdown 代码块标记）
-            response = response.strip()
-            if response.startswith("```json"):
-                response = response[7:]
-            if response.startswith("```"):
-                response = response[3:]
-            if response.endswith("```"):
-                response = response[:-3]
-            
-            data = json.loads(response.strip())
-            
-            # 构建节点
-            nodes = []
-            node_name_to_id = {}
-            
-            for node_data in data.get("nodes", []):
-                node = GraphNode(
-                    id="",  # 稍后生成
-                    label=node_data["label"],
-                    name=node_data["name"],
-                    content=node_data["content"],
-                    confidence=node_data.get("confidence", 1.0),
-                    source_memory_id=context.get("source_memory_id"),
-                    group_id=context.get("group_id")
-                )
-                node.id = node.generate_id()
-                nodes.append(node)
-                node_name_to_id[node.name] = node.id
-            
-            # 构建边
-            edges = []
-            for edge_data in data.get("edges", []):
-                source_id = node_name_to_id.get(edge_data["source_name"])
-                target_id = node_name_to_id.get(edge_data["target_name"])
-                
-                if source_id and target_id:
-                    edge = GraphEdge(
-                        source_id=source_id,
-                        target_id=target_id,
-                        relation_type=edge_data["relation_type"],
-                        confidence=edge_data.get("confidence", 1.0),
-                        source_memory_id=context.get("source_memory_id")
-                    )
-                    edges.append(edge)
-            
-            return ExtractionResult(
-                nodes=nodes,
-                edges=edges,
-                extraction_confidence=data.get("extraction_confidence", 1.0)
-            )
-        except Exception as e:
-            logger.error(f"解析提取结果失败：{e}")
-            return ExtractionResult()
-```
+提取源：
+- L1 缓冲总结后自动提取
+- L2 记忆总结后自动提取
+- LLM Tool 补充调整
 
 ### ✅ 4.4 实现图谱检索器 (`iris_memory/l3_kg/retriever.py`)
 
-```python
-from iris_memory.core import get_logger
-from iris_memory.config import get_config
-from .adapter import L3KGAdapter
-from .models import GraphNode, GraphEdge
-import asyncio
-
-logger = get_logger("l3_kg")
-
-class GraphRetriever:
-    """图谱检索器"""
-    
-    def __init__(self, adapter: L3KGAdapter):
-        self.adapter = adapter
-        self.config = get_config()
-    
-    async def retrieve_with_expansion(
-        self,
-        memory_node_ids: list[str],
-        group_id: str = None
-    ) -> tuple[list[dict], list[dict]]:
-        """图增强检索：基于向量检索命中的记忆节点进行路径扩展
-        
-        Args:
-            memory_node_ids: 向量检索命中的记忆对应的节点ID列表
-            group_id: 群聊ID
-        
-        Returns:
-            (节点列表, 边列表)
-        """
-        if not self.adapter._is_available:
-            return [], []
-        
-        try:
-            # 获取扩展深度配置
-            max_depth = self.config.get("l3_kg.expansion_depth", 2)
-            timeout_ms = self.config.get("l3_kg.timeout_ms", 1500)
-            
-            # 设置超时保护
-            nodes, edges = await asyncio.wait_for(
-                self.adapter.expand_from_nodes(
-                    node_ids=memory_node_ids,
-                    max_depth=max_depth,
-                    group_id=group_id
-                ),
-                timeout=timeout_ms / 1000
-            )
-            
-            logger.info(
-                f"图增强检索完成：{len(nodes)} 个节点，"
-                f"{len(edges)} 条边，深度 {max_depth}"
-            )
-            
-            return nodes, edges
-        except asyncio.TimeoutError:
-            logger.warning(f"图增强检索超时（{timeout_ms}ms），跳过")
-            return [], []
-        except Exception as e:
-            logger.error(f"图增强检索失败：{e}")
-            return [], []
-    
-    async def update_access_count(self, node_ids: list[str]):
-        """更新节点访问计数"""
-        if not self.adapter._is_available:
-            return
-        
-        try:
-            # 批量更新节点访问计数
-            for node_id in node_ids:
-                self.adapter._conn.execute("""
-                    MATCH (e:Entity {id: $id})
-                    SET e.access_count = e.access_count + 1,
-                        e.last_access_time = $now
-                """, {"id": node_id, "now": datetime.now()})
-        except Exception as e:
-            logger.error(f"更新节点访问计数失败：{e}")
-    
-    def format_for_context(
-        self,
-        nodes: list[dict],
-        edges: list[dict]
-    ) -> str:
-        """格式化图谱结果为上下文文本
-        
-        Args:
-            nodes: 节点列表
-            edges: 边列表
-        
-        Returns:
-            格式化的文本
-        """
-        if not nodes:
-            return ""
-        
-        lines = ["## 知识图谱关联信息"]
-        
-        # 按类型分组节点
-        nodes_by_type = {}
-        for node in nodes:
-            label = node.get("label", "Unknown")
-            if label not in nodes_by_type:
-                nodes_by_type[label] = []
-            nodes_by_type[label].append(node)
-        
-        # 输出节点
-        for label, type_nodes in nodes_by_type.items():
-            lines.append(f"\n### {label}")
-            for node in type_nodes:
-                lines.append(f"- {node['name']}: {node['content']}")
-        
-        # 输出关系
-        if edges:
-            lines.append("\n### 关系")
-            for edge in edges:
-                lines.append(
-                    f"- {edge['source_name']} --[{edge['relation_type']}]--> "
-                    f"{edge['target_name']}"
-                )
-        
-        return "\n".join(lines)
-```
+实现 `GraphRetriever` 类：
+- `retrieve_with_expansion(memory_node_ids, group_id)` - 图增强检索
+  - 从向量检索命中的记忆节点出发
+  - 路径扩展查找相关节点和边
+  - 超时保护（默认 1500ms）
+  - 深度限制（默认 2 跳）
+- `update_access_count(node_ids)` - 更新节点访问计数
+- `format_for_context(nodes, edges)` - 格式化为上下文文本
 
 ### ⏳ 4.5 集成实体提取到总结流程
 
-**L1 缓冲总结后提取** (`iris_memory/l1_buffer/summarizer.py` 修改):
+**待实现**：
+- 修改 `iris_memory/l1_buffer/summarizer.py` - L1 总结后提取实体
+- 修改 `iris_memory/l2_memory/retriever.py` - L2 总结后提取实体
 
-```python
-async def summarize(self, messages: list[dict], group_id: str):
-    """总结消息队列"""
-    # 原有总结逻辑...
-    summary_text = await self.llm_manager.generate(...)
-    
-    # 新增：提取实体和关系
-    if self.config.get("l3_kg.enable"):
-        try:
-            extractor = EntityExtractor(self.llm_manager)
-            extraction_result = await extractor.extract_from_text(
-                text=summary_text,
-                context={
-                    "group_id": group_id,
-                    "source_memory_id": memory_id
-                }
-            )
-            
-            # 存储到图谱
-            kg_adapter = self.component_manager.get_component("l3_kg")
-            for node in extraction_result.nodes:
-                await kg_adapter.add_node(node)
-            for edge in extraction_result.edges:
-                await kg_adapter.add_edge(edge)
-        except Exception as e:
-            logger.warning(f"L1 总结后实体提取失败（不影响主流程）：{e}")
-```
-
-**L2 记忆总结后提取** (`iris_memory/l2_memory/retriever.py` 修改):
-
-```python
-async def summarize_memories(self, memories: list[dict], group_id: str):
-    """合并相似记忆"""
-    # 原有合并逻辑...
-    merged_text = await self.llm_manager.generate(...)
-    
-    # 新增：提取实体和关系（类似 L1）
-    if self.config.get("l3_kg.enable"):
-        # ... 同 L1 的提取逻辑
-```
+提取逻辑：
+1. 在总结完成后调用 `EntityExtractor.extract_from_text()`
+2. 将提取结果存储到图谱
+3. 失败时仅记录日志，不影响主流程
 
 ### ✅ 4.6 实现 LLM Tool：保存知识 (`iris_memory/tools/save_knowledge.py`)
 
-```python
-from astrbot.api import filter
-from iris_memory.core import get_logger
-from iris_memory.l3_kg import GraphNode, GraphEdge
-
-logger = get_logger("tools")
-
-@filter.llm_tool(name="save_knowledge")
-async def save_knowledge(
-    nodes: list[dict],
-    edges: list[dict]
-) -> str:
-    """保存知识到图谱
-    
-    Args:
-        nodes: 节点列表，每个节点包含 label, name, content, confidence
-        edges: 边列表，每个边包含 source_name, target_name, relation_type, confidence
-    
-    Returns:
-        操作结果描述
-    """
-    try:
-        kg_adapter = get_component("l3_kg")
-        if not kg_adapter._is_available:
-            return "知识图谱不可用"
-        
-        # 构建 GraphNode 对象
-        graph_nodes = []
-        for node_data in nodes:
-            node = GraphNode(
-                id="",
-                label=node_data["label"],
-                name=node_data["name"],
-                content=node_data["content"],
-                confidence=node_data.get("confidence", 1.0)
-            )
-            node.id = node.generate_id()
-            graph_nodes.append(node)
-        
-        # 构建 GraphEdge 对象
-        node_name_to_id = {n.name: n.id for n in graph_nodes}
-        graph_edges = []
-        for edge_data in edges:
-            source_id = node_name_to_id.get(edge_data["source_name"])
-            target_id = node_name_to_id.get(edge_data["target_name"])
-            
-            if source_id and target_id:
-                edge = GraphEdge(
-                    source_id=source_id,
-                    target_id=target_id,
-                    relation_type=edge_data["relation_type"],
-                    confidence=edge_data.get("confidence", 1.0)
-                )
-                graph_edges.append(edge)
-        
-        # 存储到图谱
-        added_nodes = 0
-        added_edges = 0
-        for node in graph_nodes:
-            if await kg_adapter.add_node(node):
-                added_nodes += 1
-        
-        for edge in graph_edges:
-            if await kg_adapter.add_edge(edge):
-                added_edges += 1
-        
-        return f"成功保存 {added_nodes} 个节点和 {added_edges} 条边"
-    except Exception as e:
-        logger.error(f"保存知识失败：{e}")
-        return f"保存失败：{str(e)}"
-```
+实现 `save_knowledge` Tool：
+- 允许 LLM 手动保存知识到图谱
+- 参数：`nodes`（节点列表）、`edges`（边列表）
+- 返回：操作结果描述
+- 支持 LLM 主动补充和调整知识
 
 ### ⏳ 4.7 集成到主程序 (`main.py`)
 
-```python
-async def _ensure_initialized(self):
-    """初始化组件"""
-    if self._initialized:
-        return
-    
-    # 创建组件
-    components = [
-        L1Buffer(),
-        L2MemoryAdapter(),
-        L3KGAdapter(),  # 新增
-    ]
-    
-    self.component_manager = ComponentManager(components)
-    await self.component_manager.initialize_all()
-    
-    self._initialized = True
+**待实现**：
+- 在 `ComponentManager` 中注册 `L3KGAdapter` 组件
+- 在 LLM 请求钩子中注入图谱检索结果
 
-@filter.on_llm_request()
-async def on_llm_request(event: AstrBotMessageEvent):
-    """LLM 请求钩子：注入图谱检索结果"""
-    # ... L1/L2 检索逻辑
-    
-    # 新增：图增强检索
-    if config.get("l3_kg.enable") and config.get("l2_memory.enable_graph_enhancement"):
-        kg_adapter = component_manager.get_component("l3_kg")
-        retriever = GraphRetriever(kg_adapter)
-        
-        # 从 L2 检索结果中提取节点ID
-        memory_node_ids = [m.get("node_id") for m in l2_results if m.get("node_id")]
-        
-        if memory_node_ids:
-            graph_nodes, graph_edges = await retriever.retrieve_with_expansion(
-                memory_node_ids,
-                group_id=group_id
-            )
-            
-            # 格式化并注入上下文
-            graph_context = retriever.format_for_context(graph_nodes, graph_edges)
-            if graph_context:
-                context_parts.append(graph_context)
-```
+集成逻辑：
+1. 从 L2 检索结果中提取记忆节点 ID
+2. 调用 `GraphRetriever.retrieve_with_expansion()` 进行图增强检索
+3. 格式化并注入到上下文中
 
 **完成标志**：
 - ✅ L1/L2 总结后可在 KuzuDB 中查到节点和边
@@ -1078,65 +410,30 @@ iris_memory/
 **配置项设计**：
 
 **用户配置**（`_conf_schema.json`）：
-```json
-{
-  "l3_kg": {
-    "enable": {
-      "type": "boolean",
-      "default": true,
-      "description": "启用 L3 知识图谱"
-    },
-    "max_nodes": {
-      "type": "integer",
-      "default": 50000,
-      "description": "最大节点数"
-    },
-    "max_edges": {
-      "type": "integer",
-      "default": 100000,
-      "description": "最大边数"
-    },
-    "timeout_ms": {
-      "type": "integer",
-      "default": 1500,
-      "description": "查询超时时间（毫秒）"
-    },
-    "expansion_depth": {
-      "type": "integer",
-      "default": 2,
-      "description": "图增强检索的路径扩展深度"
-    },
-    "enable_type_whitelist": {
-      "type": "boolean",
-      "default": true,
-      "description": "启用类型白名单约束"
-    }
-  }
-}
-```
+- `l3_kg.enable` - 启用 L3 知识图谱（默认 true）
+- `l3_kg.max_nodes` - 最大节点数（默认 50000）
+- `l3_kg.max_edges` - 最大边数（默认 100000）
+- `l3_kg.timeout_ms` - 检索超时（默认 1500ms）
+- `l3_kg.expansion_depth` - 路径扩展深度（默认 2）
+- `l3_kg.enable_type_whitelist` - 启用类型白名单约束（默认 true）
 
-**隐藏配置**（`hidden_config.json`）：
-```json
-{
-  "kuzu_query_timeout_ms": 1500,
-  "entity_extraction_temperature": 0.3,
-  "type_merge_threshold": 0.8,
-  "type_similarity_model": "text-embedding-3-small",
-  "node_confidence_threshold": 0.3,
-  "edge_weight_decay_rate": 0.01,
-  "forgetting_lambda_kg": 0.01,
-  "forgetting_threshold_kg": 0.2,
-  "kg_retention_days": 30
-}
-```
+**隐藏配置**（`config/defaults.py`）：
+- `kuzu_query_timeout_ms` - KuzuDB 查询超时（默认 5000ms）
+- `entity_extraction_temperature` - 实体提取温度（默认 0.3）
+- `type_merge_threshold` - 类型合并相似度阈值（默认 0.8）
+- `node_confidence_threshold` - 节点最低置信度（默认 0.3）
+- `edge_weight_decay_rate` - 边权重衰减率（默认 0.01）
+- `forgetting_lambda_kg` - 知识图谱遗忘系数（默认 0.01）
+- `forgetting_threshold_kg` - 知识图谱遗忘阈值（默认 0.2）
+- `kg_retention_days` - 知识图谱保留天数（默认 30）
 
 **测试要求**：
-- `tests/l3_kg/test_models.py`：数据结构测试
-- `tests/l3_kg/test_adapter.py`：适配器测试（初始化、节点/边操作、查询、降级）
-- `tests/l3_kg/test_extractor.py`：提取器测试（prompt 构建、结果解析）
-- `tests/l3_kg/test_retriever.py`：检索器测试（路径扩展、超时保护、格式化）
-- `tests/l3_kg/test_eviction.py`：淘汰机制测试
-- `tests/tools/test_save_knowledge.py`：Tool 测试
+- `test_models.py` - 数据结构测试
+- `test_adapter.py` - 适配器测试（初始化、节点/边操作、查询、降级）
+- `test_extractor.py` - 提取器测试（prompt 构建、结果解析）
+- `test_retriever.py` - 检索器测试（路径扩展、超时保护、格式化）
+- `test_eviction.py` - 淘汰机制测试
+- `test_save_knowledge.py` - Tool 测试
 
 ---
 
