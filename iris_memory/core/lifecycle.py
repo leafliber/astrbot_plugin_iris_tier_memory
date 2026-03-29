@@ -5,7 +5,6 @@
 """
 from typing import Optional, Tuple, TYPE_CHECKING
 
-from iris_memory.config import get_config
 from iris_memory.core import get_logger, ComponentManager, Component
 
 if TYPE_CHECKING:
@@ -25,6 +24,7 @@ def create_components(context: "Context") -> Tuple[Component, ...]:
     Returns:
         组件元组
     """
+    from iris_memory.config import get_config
     config = get_config()
     components = []
     
@@ -145,6 +145,7 @@ async def _start_scheduled_tasks(component_manager: ComponentManager) -> None:
     Args:
         component_manager: 组件管理器实例
     """
+    from iris_memory.config import get_config
     from iris_memory.tasks import TaskScheduler, ForgettingTask, MergeTask
     
     scheduler = component_manager.get_component("scheduler")

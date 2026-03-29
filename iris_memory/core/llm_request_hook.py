@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, cast
 
 from iris_memory.core import get_logger
 from iris_memory.platform import get_adapter
-from iris_memory.config import get_config
 
 if TYPE_CHECKING:
     from astrbot.api.event import AstrMessageEvent
@@ -113,6 +112,7 @@ async def _inject_user_profile(
         component_manager: 组件管理器实例
     """
     # 1. 检查是否启用自动注入
+    from iris_memory.config import get_config
     config = get_config()
     if not config.get("profile.enable"):
         return
@@ -235,6 +235,7 @@ async def _parse_images_if_related_mode(
         component_manager: 组件管理器实例
     """
     # 1. 检查是否启用图片解析
+    from iris_memory.config import get_config
     config = get_config()
     if not config.get("image_parsing.enable"):
         return
