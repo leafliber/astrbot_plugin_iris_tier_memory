@@ -9,7 +9,7 @@ Iris Tier Memory - AstrBot 分层记忆插件
 
 import sys
 from pathlib import Path
-from typing import Optional, cast
+from typing import Optional
 
 # 模块导入支持
 plugin_root = Path(__file__).parent
@@ -40,7 +40,7 @@ from iris_memory.tools import (
     GetGroupProfileTool,
     GetUserProfileTool,
 )
-from iris_memory.web import WebServer
+from iris_memory.web import WebServer, create_web_server_from_config
 
 logger = get_logger("main")
 
@@ -88,8 +88,13 @@ class IrisTierMemoryPlugin(Star):
         
         # 启动 Web 服务器（如果启用）
         self.web_server: Optional[WebServer] = None
-        if self.config.get("web.enable"):
-            self._start_web_server()
+        try:
+            self.web_server = create_web_server_from_config()
+            if self.web_server:
+                self.web_server.start()
+                logger.info("✅ Web 管理界面已就绪")
+        except Exception as e:
+            logger.error(f"初始化 Web 服务器失败：{e}", exc_info=True)
         
         logger.info("Iris Tier Memory 插件已加载")
     
@@ -112,21 +117,6 @@ class IrisTierMemoryPlugin(Star):
         
         except Exception as e:
             logger.error(f"注册 LLM Tool 失败：{e}", exc_info=True)
-    
-    def _start_web_server(self) -> None:
-        """启动 Web 服务器"""
-        try:
-            # 从配置获取值（使用 cast 解决类型检查问题）
-            host = cast(str, self.config.get("web.host", "0.0.0.0"))
-            port = cast(int, self.config.get("web.port", 9967))
-            
-            self.web_server = WebServer(port=port, host=host)
-            self.web_server.start()
-            
-            logger.info(f"✅ Web 管理界面已启动: http://{host}:{port}/iris")
-        
-        except Exception as e:
-            logger.error(f"启动 Web 服务器失败：{e}", exc_info=True)
     
     async def _ensure_initialized(self) -> None:
         """确保组件已初始化（延迟初始化模式）"""

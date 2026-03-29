@@ -22,6 +22,30 @@
 - `web.host`: 监听地址（默认 `0.0.0.0`）
 - `web.port`: 独立端口（默认 `9967`）
 
+**高级安全配置**（隐藏配置，在 `data/iris_memory/hidden_config.json` 中修改）：
+- `web_ssl_cert`: SSL 证书路径（可选，启用 HTTPS）
+- `web_ssl_key`: SSL 私钥路径（可选，启用 HTTPS）
+- `web_cors_origins`: CORS 允许的源（默认 `*`）
+- `web_enable_csrf_protection`: 启用 CSRF 保护（默认 `true`）
+- `web_rate_limit_max_requests`: 速率限制最大请求数（默认 `20`）
+- `web_rate_limit_window_seconds`: 速率限制时间窗口（默认 `60`）
+
+**修改隐藏配置示例**：
+```bash
+# 编辑隐藏配置文件
+vim data/iris_memory/hidden_config.json
+
+# 添加或修改配置项
+{
+  "web_ssl_cert": "/etc/letsencrypt/live/example.com/fullchain.pem",
+  "web_ssl_key": "/etc/letsencrypt/live/example.com/privkey.pem",
+  "web_cors_origins": "https://example.com",
+  "web_rate_limit_max_requests": 50
+}
+
+# 重启 AstrBot 使配置生效
+```
+
 **启动后访问**：
 - API: `http://localhost:9967/api/iris/memory/l2/search`
 - 前端: `http://localhost:9967/iris`
@@ -90,6 +114,7 @@ iris_memory/web/
 - **安全策略**：完整JWT签名验证（防止Token伪造）
 - **密钥来源**：AstrBot 配置文件 `data/cmd_config.json`
 - **适用版本**：AstrBot > 3.5.17（已修复CVE-2025-55449）
+- **配置路径**：支持环境变量 `ASTR_BOT_CONFIG_PATH` 自定义路径
 
 ### 认证流程
 
@@ -112,6 +137,84 @@ async def search_l2_memory():
     # 已认证，可访问
     pass
 ```
+
+## 🛡️ 安全功能
+
+### 1. 速率限制
+
+防止暴力破解和 API 滥用：
+
+- **限制规则**：每个 IP 每分钟最多 20 次请求
+- **响应头**：`X-RateLimit-Remaining` 显示剩余配额
+- **超限响应**：HTTP 429 + 错误信息
+
+**生产环境建议**：使用 Redis 实现分布式速率限制
+
+### 2. HTTPS 支持
+
+保护数据传输安全：
+
+**配置方式**：
+```json
+{
+  "web": {
+    "ssl_cert": "/path/to/cert.pem",
+    "ssl_key": "/path/to/key.pem"
+  }
+}
+```
+
+**证书获取**：
+- Let's Encrypt（免费）
+- 自签名证书（开发环境）
+- 商业证书
+
+### 3. CSRF 保护
+
+防止跨站请求伪造攻击：
+
+- **自动验证**：POST/PUT/DELETE 请求检查 CSRF Token
+- **Token 传递**：前端需在 Header 中携带 `X-CSRF-Token`
+- **Cookie 配合**：前端需设置 `csrf_token` Cookie
+
+**前端示例**：
+```javascript
+// 从 Cookie 读取 CSRF Token
+const csrfToken = document.cookie
+  .split('; ')
+  .find(row => row.startsWith('csrf_token='))
+  ?.split('=')[1];
+
+// 在请求中携带
+axios.post('/api/iris/memory/l2/search', data, {
+  headers: { 'X-CSRF-Token': csrfToken }
+});
+```
+
+### 4. CORS 配置
+
+控制跨域访问：
+
+**配置方式**（隐藏配置）：
+```json
+{
+  "web_cors_origins": "https://example.com,https://app.example.com"
+}
+```
+
+**开发环境**：`"*"` 允许所有源  
+**生产环境**：限制为具体的域名
+
+### 5. 错误处理
+
+完善的错误响应：
+
+| 状态码 | 代码 | 说明 |
+|--------|------|------|
+| 401 | UNAUTHORIZED | 未登录 |
+| 403 | FORBIDDEN | 无权限访问 |
+| 429 | RATE_LIMIT_EXCEEDED | 请求过于频繁 |
+| 500 | AUTH_CONFIG_ERROR | 服务器认证配置错误 |
 
 ## 📊 API 文档
 
@@ -202,6 +305,49 @@ npm run test
 
 ## 🔧 故障排查
 
+### JWT 认证失败
+
+1. **确认 AstrBot 版本** > 3.5.17
+2. **检查配置文件**：`data/cmd_config.json` 中是否存在 `jwt_secret`
+3. **重新登录**：AstrBot Dashboard (`http://localhost:6185`)
+4. **清除 Cookie**：浏览器清除后重新登录
+5. **检查环境变量**：确认 `ASTR_BOT_CONFIG_PATH` 是否正确（如已设置）
+
+### 速率限制触发
+
+**现象**：频繁收到 HTTP 429 错误
+
+**解决方案**：
+1. 降低请求频率
+2. 检查是否有异常客户端
+3. 生产环境使用 Redis 实现分布式限制
+
+### HTTPS 配置失败
+
+**检查项**：
+1. 证书文件路径是否正确
+2. 证书格式是否为 PEM
+3. 私钥是否匹配证书
+4. 文件权限是否正确（可读）
+
+### CORS 错误
+
+**现象**：浏览器控制台显示跨域错误
+
+**解决方案**：
+1. 检查 `web.cors_origins` 配置
+2. 确认请求源是否在允许列表中
+3. 开发环境临时使用 `"*"`
+
+### CSRF Token 验证失败
+
+**现象**：POST 请求返回 403
+
+**解决方案**：
+1. 检查前端是否设置 `csrf_token` Cookie
+2. 确认请求 Header 包含 `X-CSRF-Token`
+3. 刷新页面重新获取 Token
+
 ### 端口冲突
 
 如果 9967 端口被占用：
@@ -211,9 +357,10 @@ npm run test
 ### 跨域 Cookie 问题
 
 如果浏览器不携带 Cookie：
-1. 确认 AstrBot 版本 > 3.5.17
-2. 检查浏览器设置：允许第三方 Cookie
-3. 或使用相同端口部署（需要 AstrBot 支持）
+1. **确认 AstrBot 版本** > 3.5.17
+2. **检查浏览器设置**：允许第三方 Cookie
+3. **使用 HTTPS**：某些浏览器要求 HTTPS 才能跨端口携带 Cookie
+4. **配置 SameSite**：确保 Cookie 设置为 `SameSite=None; Secure`
 
 ### 前端构建失败
 
@@ -223,13 +370,6 @@ npm run test
 node --version
 npm --version
 ```
-
-### JWT 认证失败
-
-1. 确认 AstrBot 版本 > 3.5.17
-2. 检查 `data/cmd_config.json` 中是否存在 `jwt_secret`
-3. 重新登录 AstrBot Dashboard (`http://localhost:6185`)
-4. 清除浏览器 Cookie 后重新登录
 
 ### API 503 错误
 

@@ -6,17 +6,90 @@
 2. 完整验证JWT签名和过期时间
 3. 验证用户名是否为管理员
 4. 适用于AstrBot > 3.5.17版本（修复CVE-2025-55449后）
+5. 支持速率限制防止暴力破解
 """
+import os
 from quart import request, jsonify
 from functools import wraps
 import jwt
 import json
 import time
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, cast
+from collections import defaultdict
+import threading
 from iris_memory.core import get_logger
 
 logger = get_logger("web.auth")
+
+
+class RateLimiter:
+    """简单的速率限制器（基于内存）
+    
+    注意：生产环境建议使用 Redis 等分布式存储
+    """
+    
+    def __init__(self, max_requests: int = None, window_seconds: int = None):
+        """
+        Args:
+            max_requests: 时间窗口内最大请求数（None 则使用配置值）
+            window_seconds: 时间窗口（秒）（None 则使用配置值）
+        """
+        # 延迟加载配置值（避免循环导入）
+        self._max_requests = max_requests
+        self._window_seconds = window_seconds
+        self.requests: Dict[str, list] = defaultdict(list)
+        self._lock = threading.Lock()
+    
+    @property
+    def max_requests(self) -> int:
+        """从配置获取最大请求数"""
+        if self._max_requests is not None:
+            return self._max_requests
+        try:
+            from iris_memory.config import get_config
+            config = get_config()
+            return cast(int, config.get("web_rate_limit_max_requests", 20))
+        except:
+            return 20  # 默认值
+    
+    @property
+    def window_seconds(self) -> int:
+        """从配置获取时间窗口"""
+        if self._window_seconds is not None:
+            return self._window_seconds
+        try:
+            from iris_memory.config import get_config
+            config = get_config()
+            return cast(int, config.get("web_rate_limit_window_seconds", 60))
+        except:
+            return 60  # 默认值
+    
+    def is_allowed(self, client_id: str) -> tuple[bool, int]:
+        """检查是否允许请求
+        
+        Args:
+            client_id: 客户端标识（如 IP 地址）
+            
+        Returns:
+            (是否允许, 剩余请求数)
+        """
+        now = time.time()
+        cutoff = now - self.window_seconds
+        
+        with self._lock:
+            # 清理过期记录
+            self.requests[client_id] = [
+                ts for ts in self.requests[client_id] if ts > cutoff
+            ]
+            
+            # 检查是否超限
+            if len(self.requests[client_id]) >= self.max_requests:
+                return False, 0
+            
+            # 记录新请求
+            self.requests[client_id].append(now)
+            return True, self.max_requests - len(self.requests[client_id])
 
 
 class DashboardAuth:
@@ -27,17 +100,52 @@ class DashboardAuth:
     2. 从AstrBot配置读取JWT密钥
     3. 验证签名、过期时间、用户身份
     4. 注入用户信息到请求上下文
+    5. 速率限制防止暴力破解
     """
     
-    def __init__(self):
+    def __init__(self, config_path: Optional[Path] = None):
+        """
+        Args:
+            config_path: AstrBot 配置文件路径（可选，默认自动检测）
+        """
+        self.config_path = config_path or self._detect_config_path()
         self.dashboard_config = self._load_dashboard_config()
         self.jwt_secret = self._load_jwt_secret()
+        self.rate_limiter = RateLimiter()  # 使用配置值
         
         if not self.jwt_secret:
-            logger.warning(
-                "⚠️ 未找到JWT密钥，认证功能受限。"
-                "请确保AstrBot版本 > 3.5.17"
+            logger.error(
+                "❌ JWT 密钥未配置，认证将始终失败！"
+                f"配置路径: {self.config_path}，"
+                "请确保 AstrBot 版本 > 3.5.17 或手动配置 jwt_secret"
             )
+        else:
+            logger.info("✅ JWT 认证已就绪")
+    
+    def _detect_config_path(self) -> Path:
+        """自动检测 AstrBot 配置文件路径
+        
+        Returns:
+            配置文件路径
+        """
+        # 优先级：环境变量 > 默认路径
+        env_path = os.environ.get('ASTR_BOT_CONFIG_PATH')
+        if env_path:
+            return Path(env_path)
+        
+        # 尝试常见路径
+        common_paths = [
+            Path("data/cmd_config.json"),  # 标准路径
+            Path("../../data/cmd_config.json"),  # 相对路径
+            Path("/app/data/cmd_config.json"),  # Docker 容器路径
+        ]
+        
+        for path in common_paths:
+            if path.exists():
+                return path
+        
+        # 默认返回标准路径
+        return Path("data/cmd_config.json")
     
     def _load_dashboard_config(self) -> dict:
         """加载 AstrBot Dashboard 配置
@@ -186,6 +294,19 @@ class DashboardAuth:
         """
         @wraps(f)
         async def decorated(*args, **kwargs):
+            # 速率限制检查
+            client_ip = request.remote_addr or 'unknown'
+            allowed, remaining = self.rate_limiter.is_allowed(client_ip)
+            
+            if not allowed:
+                logger.warning(f"速率限制触发: {client_ip}")
+                return jsonify({
+                    'success': False,
+                    'error': '请求过于频繁，请稍后再试',
+                    'code': 'RATE_LIMIT_EXCEEDED',
+                    'retry_after': 60
+                }), 429
+            
             # 获取Token
             token = self._get_token()
             
@@ -196,6 +317,15 @@ class DashboardAuth:
                     'code': 'UNAUTHORIZED'
                 }), 401
             
+            # 检查 JWT 密钥是否已加载
+            if not self.jwt_secret:
+                logger.error("JWT 密钥未配置，拒绝访问")
+                return jsonify({
+                    'success': False,
+                    'error': '服务器认证配置错误，请联系管理员',
+                    'code': 'AUTH_CONFIG_ERROR'
+                }), 500
+            
             try:
                 # 验证Token（完整签名验证）
                 payload = self._verify_token_with_signature(token)
@@ -204,8 +334,12 @@ class DashboardAuth:
                 request.current_user = payload.get('username')
                 request.is_admin = True
                 
-                # 执行业务逻辑
-                return await f(*args, **kwargs)
+                # 添加速率限制响应头
+                response = await f(*args, **kwargs)
+                if hasattr(response, 'headers'):
+                    response.headers['X-RateLimit-Remaining'] = str(remaining)
+                
+                return response
             
             except ValueError as e:
                 logger.warning(f"认证失败：{e}")
@@ -224,6 +358,84 @@ class DashboardAuth:
                 }), 500
         
         return decorated
+    
+    def generate_csrf_token(self) -> str:
+        """生成 CSRF Token
+        
+        Returns:
+            随机生成的 CSRF Token
+        """
+        import secrets
+        return secrets.token_urlsafe(32)
+    
+    def validate_csrf_token(self, token: Optional[str]) -> bool:
+        """验证 CSRF Token
+        
+        Args:
+            token: 客户端提交的 Token
+            
+        Returns:
+            Token 是否有效
+        """
+        if not token:
+            return False
+        
+        # 从 Cookie 获取 CSRF Token
+        cookie_token = request.cookies.get('csrf_token')
+        if not cookie_token:
+            return False
+        
+        # 从 Header 或 Form 获取提交的 Token
+        submitted_token = token or request.headers.get('X-CSRF-Token')
+        
+        # 常量时间比较，防止时序攻击
+        import hmac
+        return hmac.compare_digest(cookie_token, submitted_token or '')
+
+
+def csrf_protect(f):
+    """CSRF 保护装饰器
+    
+    用法：
+        @dashboard_auth.require_auth
+        @csrf_protect
+        async def protected_route():
+            pass
+    
+    注意：
+        - 需要前端在请求中包含 X-CSRF-Token Header
+        - Cookie 中的 csrf_token 由前端设置
+    """
+    @wraps(f)
+    async def decorated(*args, **kwargs):
+        # 仅检查 POST/PUT/DELETE 请求
+        if request.method in ['POST', 'PUT', 'DELETE', 'PATCH']:
+            csrf_token = request.headers.get('X-CSRF-Token') or \
+                        request.json.get('csrf_token') if request.is_json else None
+            
+            cookie_token = request.cookies.get('csrf_token')
+            
+            if not csrf_token or not cookie_token:
+                logger.warning(f"CSRF Token 缺失: {request.method} {request.path}")
+                return jsonify({
+                    'success': False,
+                    'error': 'CSRF Token 缺失，请刷新页面重试',
+                    'code': 'CSRF_TOKEN_MISSING'
+                }), 403
+            
+            # 常量时间比较
+            import hmac
+            if not hmac.compare_digest(csrf_token, cookie_token):
+                logger.warning(f"CSRF Token 不匹配: {request.method} {request.path}")
+                return jsonify({
+                    'success': False,
+                    'error': 'CSRF Token 无效',
+                    'code': 'CSRF_TOKEN_INVALID'
+                }), 403
+        
+        return await f(*args, **kwargs)
+    
+    return decorated
 
 
 # 全局单例实例

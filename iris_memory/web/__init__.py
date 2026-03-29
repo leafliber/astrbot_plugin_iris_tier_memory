@@ -17,7 +17,7 @@ Web 模块 - 提供前后端分离的 Web 界面
     from iris_memory.web import register_routes
     register_routes(context.app)
 """
-from quart import Blueprint, send_from_directory, Quart
+from quart import Blueprint, send_from_directory, Quart, request, Response
 from pathlib import Path
 from typing import Any, Optional
 
@@ -25,17 +25,46 @@ from .routes.memory import memory_bp
 from .routes.profile import profile_bp
 from .routes.stats import stats_bp
 from .auth import dashboard_auth
-from .server import WebServer
+from .server import WebServer, create_web_server_from_config
 from iris_memory.core import get_logger
 
 logger = get_logger("web")
 
-__all__ = ['create_app', 'register_routes', 'dashboard_auth', 'WebServer']
+__all__ = ['create_app', 'register_routes', 'dashboard_auth', 'WebServer', 'create_web_server_from_config']
 
 
-def create_app() -> Quart:
+def _add_cors_headers(response: Response, origins: str) -> Response:
+    """添加 CORS 响应头
+    
+    Args:
+        response: Quart 响应对象
+        origins: 允许的源（逗号分隔）
+        
+    Returns:
+        添加了 CORS 头的响应对象
+    """
+    # 处理多源配置
+    origin_list = [o.strip() for o in origins.split(',')]
+    request_origin = request.headers.get('Origin', '')
+    
+    # 判断是否允许该源
+    if origins == '*' or request_origin in origin_list:
+        response.headers['Access-Control-Allow-Origin'] = request_origin if request_origin else '*'
+    
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, PATCH, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-CSRF-Token, X-Requested-With'
+    response.headers['Access-Control-Allow-Credentials'] = 'true'
+    response.headers['Access-Control-Max-Age'] = '3600'
+    
+    return response
+
+
+def create_app(cors_origins: str = "*") -> Quart:
     """
     创建独立的 Quart 应用实例
+    
+    Args:
+        cors_origins: CORS 允许的源（逗号分隔）
     
     Returns:
         Quart 应用实例，已注册所有路由
@@ -51,10 +80,22 @@ def create_app() -> Quart:
     """
     app = Quart(__name__)
     
+    # 添加 CORS 中间件
+    @app.after_request
+    def after_request(response: Response) -> Response:
+        return _add_cors_headers(response, cors_origins)
+    
+    # 处理 OPTIONS 预检请求
+    @app.route('/', methods=['OPTIONS'])
+    @app.route('/<path:path>', methods=['OPTIONS'])
+    async def handle_options(path: str = '') -> Response:
+        response = Response()
+        return _add_cors_headers(response, cors_origins)
+    
     # 注册所有路由
     register_routes(app)
     
-    logger.info("✅ 已创建独立 Quart 应用")
+    logger.info(f"✅ 已创建独立 Quart 应用（CORS: {cors_origins}）")
     return app
 
 
