@@ -144,7 +144,9 @@ class WebServer:
         self._thread.start()
         
         protocol = "https" if self.ssl_cert and self.ssl_key else "http"
-        logger.info(f"✅ Web 服务器已启动: {protocol}://{self.host}:{self.port}")
+        display_host = "localhost" if self.host == "0.0.0.0" else self.host
+        logger.info(f"✅ Web 服务器已启动: {protocol}://{display_host}:{self.port}")
+        logger.info(f"   前端地址: {protocol}://{display_host}:{self.port}/iris")
     
     def shutdown(self) -> None:
         """优雅关闭服务器

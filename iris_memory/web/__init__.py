@@ -111,10 +111,11 @@ def register_routes(app: Any) -> None:
         2. 托管前端静态资源（/iris/*）
     
     访问路径：
-        - API: http://localhost:6185/api/iris/memory/l2/search
-        - 前端: http://localhost:6185/iris
+        - API: /api/iris/memory/l2/search
+        - 前端: /iris
     
     注意：
+        - 实际访问地址取决于服务器配置（独立端口或 AstrBot 主端口）
         - 前端构建产物需放在 frontend/dist/ 目录
         - SPA路由：所有 /iris/* 路径返回 index.html
     """
@@ -154,7 +155,7 @@ def register_routes(app: Any) -> None:
                 # 对于前端路由路径，返回 index.html
                 return await send_from_directory(str(frontend_dist), 'index.html')
         
-        logger.info("✅ Iris Memory Web 界面已挂载到 http://localhost:6185/iris")
+        logger.info("✅ Iris Memory Web 前端已挂载到 /iris")
     else:
         logger.warning(
             f"⚠️ 前端构建产物不存在：{frontend_dist}\n"
