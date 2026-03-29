@@ -920,69 +920,153 @@ iris_memory/
 
 ---
 
-## 阶段 10：图片解析（附加功能）
+## 阶段 10：图片解析（附加功能）✅
 
 **目标**：图片可按模式解析入上下文，支持每日限额。
+
+**状态**：✅ **已完成**
 
 **前置依赖**：
 - ✅ 阶段1-9
 
 **实现步骤**：
 
-1. **创建图片解析模块** (`iris_memory/image/`)
-   - `models.py`：数据结构
-   - `parser.py`：图片解析器
-   - `quota_manager.py`：配额管理组件
+✅ **完成项**：
+1. ✅ 创建图片解析模块 (`iris_memory/image/`)
+   - `models.py`：数据结构（ImageInfo, ParseResult, QuotaStatus, MessageImages）
+   - `parser.py`：图片解析器（Vision LLM调用）
+   - `quota_manager.py`：配额管理组件（每日限额、自动重置）
 
-2. **集成到消息钩子**
-   - 解析图片并入队 L1
-   - 配额控制
+2. ✅ 集成到消息钩子
+   - `_parse_images_if_enabled()` 函数实现
+   - all 模式：解析所有图片
+   - related 模式：跳过解析（等待LLM调用）
+
+3. ✅ 平台适配器扩展
+   - `platform/base.py`：添加 `get_images()` 抽象方法
+   - `platform/qq.py`：实现图片提取逻辑
+
+4. ✅ 配置项定义
+   - 用户配置：`image_parsing.enable`, `provider`, `parsing_mode`, `daily_quota`
+   - 隐藏配置：`image_parsing_timeout_ms`, `image_parsing_max_size_kb`, 等
 
 **阶段产物**：
 ```
 iris_memory/
-└── image/                  # 图片解析模块
-    ├── __init__.py
-    ├── models.py
-    ├── parser.py
-    └── quota_manager.py
+└── image/                  # 图片解析模块 ✅
+    ├── __init__.py         # 模块导出 ✅
+    ├── models.py           # 数据结构 ✅
+    ├── parser.py           # 图片解析器 ✅
+    └── quota_manager.py    # 配额管理组件 ✅
+
+tests/
+└── image/                  # 测试文件 ✅
+    ├── test_models.py      # 数据结构测试 ✅
+    ├── test_parser.py      # 解析器测试 ✅
+    ├── test_quota_manager.py  # 配额管理测试 ✅
+    └── test_integration.py    # 集成测试 ✅
 ```
 
-**测试要求**：`tests/image/`
+**测试覆盖**：
+- ✅ 44个测试全部通过
+- ✅ 数据结构、解析器、配额管理器、集成测试完整覆盖
+
+**完成标志**：
+- ✅ 图片可通过Vision LLM解析
+- ✅ 支持all和related两种解析模式
+- ✅ 配额管理正常工作（每日重置、配额检查）
+- ✅ 解析结果自动入队L1 Buffer
+- ✅ 错误处理完善，不影响主流程
 
 ---
 
-## 阶段 11：Web 模块展示（附加功能）
+## 阶段 11：Web 模块展示（附加功能）✅ **已完成**
 
-**目标**：可通过 AstrBot WebUI 查看记忆、编辑画像、查看统计。
+**目标**：提供现代化 Web 界面，支持记忆可视化、画像编辑、统计图表，复用 AstrBot 端口和认证。
 
 **前置依赖**：
 - ✅ 阶段1-10
 
-**实现步骤**：
+**完成时间**：2026-03-29
 
-1. **创建 Web 展示模块** (`iris_memory/web/`)
-   - `routes/memory.py`：记忆可视化路由
-   - `routes/profile.py`：画像编辑路由
-   - `routes/stats.py`：统计图表路由
-   - `templates/`：模板文件
+---
 
-2. **注册 Web 路由**
-   - 使用 AstrBot Web API
+### 核心特性
 
-**阶段产物**：
+**架构**：单页面应用（SPA）+ 前后端分离
+- **后端**：Quart（异步Web框架）+ JWT认证中间件
+- **前端**：Vue.js 3 + Vuetify 3 + Pinia + Vue Router + TypeScript
+- **部署**：共享 AstrBot 端口（6185），复用 Dashboard JWT 认证
+
+**功能模块**：
+- 记忆管理（L1/L2/L3可视化）
+- 画像编辑（群聊/用户画像）
+- 统计图表（Token/记忆/图谱统计）
+
+---
+
+### ✅ 完成标志
+
+- ✅ 后端API路由正常工作
+- ✅ 前端SPA项目结构完整且构建成功
+- ✅ 复用AstrBot端口（6185）和JWT认证
+- ✅ 支持记忆可视化、画像编辑、统计图表
+- ✅ 代码分割优化（主包 489.84 kB）
+- ✅ 后端API测试完成（25个测试用例）
+
+---
+
+### 📊 测试覆盖
+
+**后端 API 测试**（tests/web/）：
+- ✅ `test_auth.py` - 认证中间件测试（8个）
+- ✅ `test_memory_api.py` - 记忆 API 测试（5个）
+- ✅ `test_profile_api.py` - 画像 API 测试（6个）
+- ✅ `test_stats_api.py` - 统计 API 测试（6个）
+
+---
+
+### 📁 阶段产物
+
 ```
 iris_memory/
-└── web/                    # Web 展示模块
-    ├── __init__.py
-    ├── routes/
-    │   ├── memory.py
-    │   ├── profile.py
-    │   └── stats.py
-    └── templates/
+└── web/                          # Web 展示模块
+    ├── __init__.py               # 注册路由到 AstrBot
+    ├── auth.py                   # JWT认证中间件
+    ├── README.md                 # 使用文档
+    ├── routes/                   # 后端 API 路由
+    │   ├── memory.py             # 记忆 API
+    │   ├── profile.py            # 画像 API
+    │   └── stats.py              # 统计 API
+    └── frontend/                 # 前端 SPA 项目
+        ├── src/                  # 源码（Vue组件/API封装）
+        ├── dist/                 # 构建产物
+        ├── package.json          # 依赖配置
+        └── vite.config.ts        # Vite配置
 ```
 
-**测试要求**：`tests/web/`
+---
+
+### 🔗 访问路径
+
+| 路径 | 说明 |
+|------|------|
+| `http://localhost:6185/iris` | 插件首页（SPA） |
+| `http://localhost:6185/iris/memory` | 记忆管理 |
+| `http://localhost:6185/iris/profile` | 画像编辑 |
+| `http://localhost:6185/iris/stats` | 统计图表 |
+
+---
+
+### 📦 依赖项
+
+**后端**（requirements.txt）：
+- quart>=0.19.0（异步Web框架）
+- PyJWT>=2.8.0（JWT Token解析）
+
+**前端**（package.json）：
+- vue@^3.4.0, vuetify@^3.4.0, pinia@^2.1.0, vue-router@^4.2.0
+- typescript@^5.3.0, vite@^5.0.0
 
 ---
 
