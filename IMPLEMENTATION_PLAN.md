@@ -770,7 +770,7 @@ iris_memory/tools/
 
 ---
 
-## 阶段 8：记忆增强（附加功能）
+## 阶段 8：记忆增强（附加功能）✅ 已完成
 
 **目标**：记忆检索质量提升，支持重排序和 Token 预算控制。
 
@@ -779,26 +779,40 @@ iris_memory/tools/
 
 **实现步骤**：
 
-1. **创建记忆增强模块** (`iris_memory/enhancement/`)
-   - `reranker.py`：重排序器
-   - `budget_control.py`：Token 预算控制
-   - `graph_enhancement.py`：图增强检索
+1. **创建记忆增强模块** (`iris_memory/enhancement/`) ✅
+   - `budget_control.py`：Token 预算控制器（支持字符估算和 tiktoken）✅
+   - `graph_enhancement.py`：图增强检索器（从 L2 记忆提取节点 ID，调用 L3 路径扩展）✅
+   - `reranker.py`：重排序器（使用 LLM 对记忆打分并重排序）✅
+   - `enhanced_retriever.py`：整合增强检索器（统一接口）✅
 
-2. **集成到检索流程**
-   - 在 L2/L3 检索后应用增强
-   - 支持配置开关
+2. **集成到检索流程** ✅
+   - 修改 `MemoryRetriever.retrieve_for_context()` 支持增强检索 ✅
+   - 支持配置开关（`l2_memory.enable_graph_enhancement`、`enhancement.enable_rerank`）✅
+   - 支持 LLM Manager 集成（用于重排序）✅
 
 **阶段产物**：
 ```
 iris_memory/
 └── enhancement/            # 记忆增强模块
-    ├── __init__.py
-    ├── reranker.py
-    ├── budget_control.py
-    └── graph_enhancement.py
+    ├── __init__.py         # 模块导出
+    ├── budget_control.py   # Token 预算控制器
+    ├── graph_enhancement.py # 图增强检索器
+    ├── reranker.py         # 重排序器
+    └── enhanced_retriever.py # 整合增强检索器
 ```
 
-**测试要求**：`tests/enhancement/`
+**测试要求**：`tests/enhancement/` ✅
+- `test_budget_control.py` ✅
+- `test_graph_enhancement.py` ✅
+- `test_reranker.py` ✅
+
+**配置项**：
+- `l2_memory.enable_graph_enhancement`：启用图增强检索（默认 False）
+- `enhancement.enable_rerank`：启用重排序（默认 False）
+- `enhancement.rerank_provider`：重排序模型 Provider
+- `hidden.token_budget_max_tokens`：Token 预算（默认 2000）
+
+**完成时间**：2026-03-29
 
 ---
 
