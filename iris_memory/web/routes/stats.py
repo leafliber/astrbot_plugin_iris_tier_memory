@@ -270,3 +270,105 @@ async def get_system_stats():
             'success': False,
             'error': str(e)
         }), 500
+
+
+@stats_bp.route('/all', methods=['GET'])
+@dashboard_auth.require_auth
+async def get_all_stats():
+    """
+    获取所有统计数据（合并端点）
+    
+    一次性返回 memory、token、kg、system 四种统计数据，
+    减少前端并发请求数，避免触发速率限制。
+    
+    Response:
+        {
+            "success": true,
+            "data": {
+                "memory": {...},
+                "token": {...},
+                "kg": {...},
+                "system": {...}
+            }
+        }
+    """
+    try:
+        manager = get_component_manager()
+        
+        # 1. 记忆统计
+        memory_stats: Dict[str, Any] = {'l1': {}, 'l2': {}, 'l3': {}}
+        
+        l1_buffer = manager.get_component("l1_buffer")
+        if l1_buffer and l1_buffer.is_available:
+            try:
+                memory_stats['l1'] = l1_buffer.get_stats()
+            except Exception as e:
+                logger.warning(f"获取L1统计失败：{e}")
+        
+        l2_memory = manager.get_component("l2_memory")
+        if l2_memory and l2_memory.is_available:
+            try:
+                memory_stats['l2'] = await l2_memory.get_stats()
+            except Exception as e:
+                logger.warning(f"获取L2统计失败：{e}")
+        
+        l3_kg = manager.get_component("l3_kg")
+        if l3_kg and l3_kg.is_available:
+            try:
+                memory_stats['l3'] = await l3_kg.get_stats()
+            except Exception as e:
+                logger.warning(f"获取L3统计失败：{e}")
+        
+        # 2. Token 统计
+        token_stats: Dict[str, Any] = {}
+        llm_manager = manager.get_component("llm_manager")
+        if llm_manager and llm_manager.is_available:
+            try:
+                all_stats = await llm_manager.get_all_token_stats()
+                for module, stat in all_stats.items():
+                    token_stats[module] = {
+                        'total_input_tokens': stat.total_input_tokens if hasattr(stat, 'total_input_tokens') else stat.get('total_input_tokens', 0),
+                        'total_output_tokens': stat.total_output_tokens if hasattr(stat, 'total_output_tokens') else stat.get('total_output_tokens', 0),
+                        'total_calls': stat.total_calls if hasattr(stat, 'total_calls') else stat.get('total_calls', 0)
+                    }
+            except Exception as e:
+                logger.warning(f"获取Token统计失败：{e}")
+        
+        # 3. 知识图谱统计
+        kg_stats: Dict[str, Any] = {'node_count': 0, 'edge_count': 0, 'node_types': {}, 'relation_types': {}}
+        if l3_kg and l3_kg.is_available:
+            try:
+                kg_stats = await l3_kg.get_stats()
+            except Exception as e:
+                logger.warning(f"获取图谱统计失败：{e}")
+        
+        # 4. 系统统计
+        components = {}
+        for name in ["l1_buffer", "l2_memory", "l3_kg", "profile", "llm_manager"]:
+            component = manager.get_component(name)
+            components[name] = component is not None and component.is_available
+        
+        system_stats = {
+            'components': components,
+            'uptime': _get_uptime(),
+            'version': '1.0.0'
+        }
+        
+        logger.info("获取所有统计成功")
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'memory': memory_stats,
+                'token': token_stats,
+                'kg': kg_stats,
+                'system': system_stats
+            }
+        })
+    
+    except Exception as e:
+        logger.error(f"获取所有统计失败：{e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500

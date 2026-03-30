@@ -228,12 +228,7 @@ const formatNumber = (num: number): string => {
 
 // 加载数据
 const loadData = async () => {
-  await Promise.all([
-    statsStore.fetchMemoryStats(),
-    statsStore.fetchTokenStats(),
-    statsStore.fetchKGStats(),
-    statsStore.fetchSystemStats()
-  ])
+  await statsStore.fetchAllStats()
 }
 
 // 刷新处理

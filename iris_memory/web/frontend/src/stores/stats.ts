@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { MemoryStats, TokenStatsResponse, KGStats, SystemStats } from '@/types'
-import * as statsApi from '@/api/stats'
+import { getAllStats, getMemoryStats, getTokenStats, getKGStats, getSystemStats } from '@/api/stats'
 
 export const useStatsStore = defineStore('stats', () => {
   // 加载状态
@@ -19,20 +19,15 @@ export const useStatsStore = defineStore('stats', () => {
   // 系统统计
   const systemStats = ref<SystemStats | null>(null)
 
-  // 获取所有统计
+  // 获取所有统计（合并请求，推荐）
   const fetchAllStats = async () => {
     loading.value = true
     try {
-      const [memory, token, kg, system] = await Promise.all([
-        statsApi.getMemoryStats(),
-        statsApi.getTokenStats(),
-        statsApi.getKGStats(),
-        statsApi.getSystemStats()
-      ])
-      memoryStats.value = memory
-      tokenStats.value = token
-      kgStats.value = kg
-      systemStats.value = system
+      const data = await getAllStats()
+      memoryStats.value = data.memory
+      tokenStats.value = data.token
+      kgStats.value = data.kg
+      systemStats.value = data.system
     } catch (error) {
       console.error('获取统计数据失败:', error)
     } finally {
@@ -43,7 +38,7 @@ export const useStatsStore = defineStore('stats', () => {
   // 获取记忆统计
   const fetchMemoryStats = async () => {
     try {
-      memoryStats.value = await statsApi.getMemoryStats()
+      memoryStats.value = await getMemoryStats()
     } catch (error) {
       console.error('获取记忆统计失败:', error)
     }
@@ -52,7 +47,7 @@ export const useStatsStore = defineStore('stats', () => {
   // 获取 Token 统计
   const fetchTokenStats = async () => {
     try {
-      tokenStats.value = await statsApi.getTokenStats()
+      tokenStats.value = await getTokenStats()
     } catch (error) {
       console.error('获取Token统计失败:', error)
     }
@@ -61,7 +56,7 @@ export const useStatsStore = defineStore('stats', () => {
   // 获取图谱统计
   const fetchKGStats = async () => {
     try {
-      kgStats.value = await statsApi.getKGStats()
+      kgStats.value = await getKGStats()
     } catch (error) {
       console.error('获取图谱统计失败:', error)
     }
@@ -70,7 +65,7 @@ export const useStatsStore = defineStore('stats', () => {
   // 获取系统统计
   const fetchSystemStats = async () => {
     try {
-      systemStats.value = await statsApi.getSystemStats()
+      systemStats.value = await getSystemStats()
     } catch (error) {
       console.error('获取系统统计失败:', error)
     }

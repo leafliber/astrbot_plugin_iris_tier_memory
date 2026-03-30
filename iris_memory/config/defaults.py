@@ -145,7 +145,7 @@ class HiddenConfig:
     web_ssl_key: str = ""                  # SSL 私钥路径
     web_cors_origins: str = "*"            # CORS 允许的源（逗号分隔）
     web_enable_csrf_protection: bool = True  # 是否启用 CSRF 保护
-    web_rate_limit_max_requests: int = 20  # 速率限制：每分钟最大请求数
+    web_rate_limit_max_requests: int = 100  # 速率限制：每分钟最大请求数
     web_rate_limit_window_seconds: int = 60  # 速率限制：时间窗口（秒）
     
     
