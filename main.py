@@ -47,11 +47,11 @@ logger = get_logger("main")
 
 
 @register(
-    "iris_tier_memory",
+    "astrbot_plugin_iris_tier_memory",
+    "Leafiber",
     "Iris Tier Memory",
-    "Leaf",
     "1.0.0",
-    "https://github.com/example/iris_tier_memory"
+    "https://github.com/Leafliber/astrbot_plugin_iris_tier_memory"
 )
 class IrisTierMemoryPlugin(Star):
     """AstrBot 分层记忆插件主类
@@ -75,7 +75,7 @@ class IrisTierMemoryPlugin(Star):
         self.context: Context = context
         
         # 初始化配置系统
-        data_dir = Path(get_astrbot_data_path()) / "plugin_data" / "nonebot_plugin_iris_tier_memory"
+        data_dir = Path(get_astrbot_data_path()) / "plugin_data" / "astrbot_plugin_iris_tier_memory"
         self.config: Config = init_config(config, data_dir)
         logger.info(f"插件数据目录：{data_dir}")
         

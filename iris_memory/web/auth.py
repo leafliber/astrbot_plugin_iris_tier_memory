@@ -120,7 +120,7 @@ class DashboardAuth:
                 "请确保 AstrBot 版本 > 3.5.17 或手动配置 jwt_secret"
             )
         else:
-            logger.info("✅ JWT 认证已就绪")
+            logger.debug("✅ JWT 认证已就绪")
     
     def _detect_config_path(self) -> Path:
         """自动检测 AstrBot 配置文件路径
@@ -176,7 +176,7 @@ class DashboardAuth:
         jwt_secret = self.dashboard_config.get('dashboard', {}).get('jwt_secret')
         
         if jwt_secret:
-            logger.info("✅ 已加载JWT密钥（完整签名验证）")
+            logger.debug("✅ 已加载JWT密钥（完整签名验证）")
         else:
             logger.warning(
                 "未找到JWT密钥配置，可能是旧版本AstrBot或配置文件损坏"

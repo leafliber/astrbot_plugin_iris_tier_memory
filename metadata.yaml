@@ -1,6 +1,6 @@
 name: astrbot_plugin_iris_tier_memory
-display_name: Iris Memory 
-desc: AstrBot 分层记忆系统插件
+display_name: Iris 智能分层记忆
+desc: 为陪伴设计的长期记忆，针对群聊优化。自带知识图谱、群聊画像、用户画像、图片分析等增强功能（专注于记忆的v2版本）
 version: v0.0.1
 author: Leafiber
 repo: https://github.com/Leafliber/astrbot_plugin_iris_tier_memory
