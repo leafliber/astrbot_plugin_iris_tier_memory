@@ -126,11 +126,12 @@ class UserProfileManager:
         personality_tags: List[str],
         interests: List[str],
         occupation: Optional[str] = None,
-        language_style: Optional[str] = None
+        language_style: Optional[str] = None,
+        custom_fields: Optional[dict] = None
     ) -> None:
         """从分析结果更新复杂字段（定时任务调用）
         
-        复杂字段包括：情感状态、性格标签、兴趣爱好、职业、语言风格。
+        复杂字段包括：情感状态、性格标签、兴趣爱好、职业、语言风格、自定义字段。
         这些字段通过 LLM 分析对话内容提取，由定时任务调用。
         
         Args:
@@ -141,6 +142,7 @@ class UserProfileManager:
             interests: 兴趣爱好列表
             occupation: 职业/身份（可选）
             language_style: 语言风格（可选）
+            custom_fields: 自定义字段字典（可选，LLM可自由添加）
         
         Examples:
             >>> await manager.update_from_analysis(
@@ -148,7 +150,8 @@ class UserProfileManager:
             ...     "group_123",
             ...     emotional_state="愉快",
             ...     personality_tags=["外向", "幽默"],
-            ...     interests=["编程", "游戏"]
+            ...     interests=["编程", "游戏"],
+            ...     custom_fields={"skill_level": "高级", "tech_stack": "Python, JS"}
             ... )
         """
         profile = await self.get_or_create(user_id, group_id)
@@ -163,6 +166,11 @@ class UserProfileManager:
         
         if language_style is not None:
             profile.language_style = language_style
+        
+        # 更新自定义字段（合并，不覆盖已有值）
+        if custom_fields:
+            profile.custom_fields.update(custom_fields)
+            logger.debug(f"更新用户自定义字段: {list(custom_fields.keys())}")
         
         # 保存画像
         await self._storage.save_user_profile(profile, group_id)

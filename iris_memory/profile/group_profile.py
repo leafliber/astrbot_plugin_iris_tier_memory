@@ -118,11 +118,12 @@ class GroupProfileManager:
         interests: List[str],
         atmosphere_tags: List[str],
         common_expressions: List[str],
-        active_time_slots: Optional[List[str]] = None
+        active_time_slots: Optional[List[str]] = None,
+        custom_fields: Optional[dict] = None
     ) -> None:
         """从分析结果更新复杂字段（定时任务调用）
         
-        复杂字段包括：群聊兴趣点、氛围标签、常用语/梗、活跃时段。
+        复杂字段包括：群聊兴趣点、氛围标签、常用语/梗、活跃时段、自定义字段。
         这些字段通过 LLM 分析对话内容提取，由定时任务调用。
         
         Args:
@@ -131,13 +132,15 @@ class GroupProfileManager:
             atmosphere_tags: 氛围标签列表
             common_expressions: 常用语/梗列表
             active_time_slots: 活跃时段列表（可选）
+            custom_fields: 自定义字段字典（可选，LLM可自由添加）
         
         Examples:
             >>> await manager.update_from_analysis(
             ...     "group_123",
             ...     interests=["技术", "AI"],
             ...     atmosphere_tags=["轻松", "技术范"],
-            ...     common_expressions=["yyds", "绝了"]
+            ...     common_expressions=["yyds", "绝了"],
+            ...     custom_fields={"main_project": "Iris", "tech_stack": "Python"}
             ... )
         """
         profile = await self.get_or_create(group_id)
@@ -149,6 +152,11 @@ class GroupProfileManager:
         
         if active_time_slots is not None:
             profile.active_time_slots = active_time_slots
+        
+        # 更新自定义字段（合并，不覆盖已有值）
+        if custom_fields:
+            profile.custom_fields.update(custom_fields)
+            logger.debug(f"更新群聊自定义字段: {list(custom_fields.keys())}")
         
         # 保存画像
         await self._storage.save_group_profile(profile)

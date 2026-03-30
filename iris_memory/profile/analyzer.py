@@ -177,7 +177,11 @@ class ProfileAnalyzer:
 {{
     "interests": ["群聊兴趣点1", "兴趣点2"],
     "atmosphere_tags": ["氛围标签1", "标签2"],
-    "common_expressions": ["常用语或群内梗"]
+    "common_expressions": ["常用语或群内梗"],
+    "custom_fields": {{
+        "自定义字段名": "字段值",
+        "other_custom_field": "其他自定义值"
+    }}
 }}
 
 注意：
@@ -185,6 +189,11 @@ class ProfileAnalyzer:
 2. 兴趣点应是多次出现的话题
 3. 氛围标签描述群聊整体风格
 4. 常用语应为群内特有的表达
+5. **custom_fields 用于存储你发现的额外有价值信息，例如：**
+   - 群内经常讨论的项目名、技术栈
+   - 特殊的群内角色或身份（如群主、大佬）
+   - 群内特有的约定或规则
+   - 其他你认为重要的特征
 
 仅返回JSON，不要其他内容。"""
     
@@ -222,7 +231,11 @@ class ProfileAnalyzer:
     "emotional_state": "当前情感状态",
     "personality_tags": ["性格标签1", "标签2"],
     "interests": ["兴趣1", "兴趣2"],
-    "language_style": "语言风格描述"
+    "language_style": "语言风格描述",
+    "custom_fields": {{
+        "自定义字段名": "字段值",
+        "other_custom_field": "其他自定义值"
+    }}
 }}
 
 注意：
@@ -230,6 +243,12 @@ class ProfileAnalyzer:
 2. 性格标签基于对话风格推断
 3. 兴趣应从对话内容中识别
 4. 语言风格描述用户的表达习惯
+5. **custom_fields 用于存储你发现的额外有价值信息，例如：**
+   - 用户的职业、专业背景
+   - 用户的技术栈、技能水平
+   - 用户的项目经历、成就
+   - 用户的人际关系、社交偏好
+   - 其他你认为重要的特征
 
 仅返回JSON，不要其他内容。"""
     
