@@ -43,9 +43,8 @@ async def preprocess_llm_request(
     """
     await _inject_l1_context(event, req, component_manager)
     await _inject_user_profile(event, req, component_manager)
+    await _inject_enhanced_memory(event, req, component_manager)
     await _parse_images_if_related_mode(event, req, component_manager)
-    # TODO: 知识图谱检索结果注入
-    # await _inject_knowledge_graph(event, req, component_manager)
 
 
 async def _inject_l1_context(
@@ -161,6 +160,92 @@ async def _inject_user_profile(
             req.prompt = profile_text
         
         logger.debug(f"已注入画像信息到群聊 {group_id} 用户 {user_id}")
+
+
+async def _inject_enhanced_memory(
+    event: "AstrMessageEvent",
+    req: "ProviderRequest",
+    component_manager: "ComponentManager"
+) -> None:
+    """注入增强记忆到 LLM 请求（内部函数）
+    
+    整合 L2 记忆检索和知识图谱增强检索。
+    
+    流程：
+    1. L2 向量检索
+    2. 图增强检索（可选）
+    3. Token 预算控制
+    4. 重排序（可选）
+    5. 注入到上下文
+    
+    Args:
+        event: AstrBot 消息事件对象
+        req: LLM 提供者请求对象
+        component_manager: 组件管理器实例
+    """
+    # 1. 检查是否启用 L2 记忆库
+    from iris_memory.config import get_config
+    config = get_config()
+    if not config.get("l2_memory.enable"):
+        logger.debug("L2 记忆库未启用，跳过记忆注入")
+        return
+    
+    # 2. 获取 L2MemoryAdapter 组件
+    l2_adapter = component_manager.get_component("l2_memory")
+    if not l2_adapter or not l2_adapter.is_available:
+        logger.debug("L2 记忆库组件不可用，跳过记忆注入")
+        return
+    
+    # 3. 获取群聊ID和用户消息
+    adapter = get_adapter(event)
+    group_id = adapter.get_group_id(event)
+    
+    # 提取用户消息作为查询文本
+    query_text = ""
+    if hasattr(event, 'message_str') and event.message_str:
+        query_text = event.message_str
+    elif hasattr(event, 'get_message_str'):
+        query_text = event.get_message_str()
+    
+    if not query_text:
+        logger.debug("无法获取用户消息，跳过记忆检索")
+        return
+    
+    try:
+        # 4. 创建增强检索器
+        from iris_memory.l2_memory import MemoryRetriever
+        from iris_memory.enhancement import EnhancedMemoryRetriever
+        
+        # 获取 LLMManager（用于重排序）
+        llm_manager = component_manager.get_component("llm_manager")
+        
+        # 创建增强检索器
+        enhanced_retriever = EnhancedMemoryRetriever(
+            component_manager=component_manager,
+            llm_manager=llm_manager
+        )
+        
+        # 5. 执行增强检索（整合 L2 + 图增强 + Token 预算控制）
+        memory_context = await enhanced_retriever.retrieve_and_format(
+            query=query_text,
+            group_id=group_id,
+            max_tokens=config.get("token_budget_max_tokens", 2000)
+        )
+        
+        if not memory_context:
+            logger.debug("增强检索未找到相关记忆")
+            return
+        
+        # 6. 注入到 system_prompt
+        if req.prompt:
+            req.prompt = memory_context + "\n\n" + req.prompt
+        else:
+            req.prompt = memory_context
+        
+        logger.debug(f"已注入增强记忆到群聊 {group_id}")
+    
+    except Exception as e:
+        logger.error(f"增强记忆注入失败: {e}", exc_info=True)
 
 
 def _format_profiles_for_injection(

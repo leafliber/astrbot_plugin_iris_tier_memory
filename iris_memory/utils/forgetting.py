@@ -117,23 +117,32 @@ def calculate_confidence(confidence: float) -> float:
 def calculate_isolation_degree(metadata: Dict[str, Any]) -> float:
     """计算孤立度得分
     
-    孤立度表示记忆缺乏关联的程度。在 L2 阶段暂时返回固定值，
-    在 L3 知识图谱阶段会根据节点连接数计算。
+    孤立度表示记忆缺乏关联的程度。在 L2 阶段返回固定值 0，
+    在 L3 知识图谱阶段根据节点连接数计算。
+    
+    公式：D = 1.0 / (connected_count + 1)
     
     Args:
-        metadata: 记忆元数据（预留参数）
+        metadata: 记忆元数据，包含 connected_count 字段
     
     Returns:
         孤立度得分 [0, 1]，越接近 1 表示越孤立
     
     Note:
-        L2 阶段默认返回 0.5（中等孤立度），
-        L3 阶段会根据图谱连接数动态计算。
+        - L2 阶段：connected_count 为 0，返回 0（不参与评分）
+        - L3 阶段：connected_count 为节点的连接边数，连接越多孤立度越低
     """
-    # TODO: L3 阶段根据图谱连接数计算
-    # connected_count = metadata.get("connected_count", 0)
-    # isolation = 1.0 / (connected_count + 1)
-    return 0.5
+    # 从 metadata 中获取连接数
+    connected_count = metadata.get("connected_count", 0)
+    
+    # 如果没有连接数信息，返回默认值
+    if connected_count == 0:
+        return 0.0  # L2 阶段返回 0，不参与评分
+    
+    # 计算孤立度：连接越多，孤立度越低
+    isolation = 1.0 / (connected_count + 1)
+    
+    return isolation
 
 
 def calculate_forgetting_score(

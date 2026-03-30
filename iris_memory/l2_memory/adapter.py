@@ -404,10 +404,55 @@ class L2MemoryAdapter(Component):
         if not self._is_available:
             return False
         
-        # TODO: 阶段 6 实现访问更新
-        # ChromaDB 需要先查询、修改 metadata、删除旧记录、添加新记录
-        logger.debug(f"访问更新暂未实现：{memory_id}")
-        return True
+        try:
+            # ChromaDB 不支持直接更新 metadata，需要先删除再添加
+            # 1. 查询旧记录
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                lambda: self._collection.get(
+                    ids=[memory_id],
+                    include=["embeddings", "metadatas", "documents"]
+                )
+            )
+            
+            if not result['ids']:
+                logger.warning(f"记忆不存在：{memory_id}")
+                return False
+            
+            # 2. 提取旧数据
+            old_embedding = result['embeddings'][0]
+            old_metadata = result['metadatas'][0]
+            old_document = result['documents'][0]
+            
+            # 3. 更新 metadata
+            access_count = old_metadata.get('access_count', 0) + 1
+            old_metadata['access_count'] = access_count
+            old_metadata['last_access_time'] = datetime.now().isoformat()
+            
+            # 4. 删除旧记录
+            await loop.run_in_executor(
+                None,
+                lambda: self._collection.delete(ids=[memory_id])
+            )
+            
+            # 5. 添加新记录（使用相同的 ID）
+            await loop.run_in_executor(
+                None,
+                lambda: self._collection.add(
+                    ids=[memory_id],
+                    embeddings=[old_embedding],
+                    metadatas=[old_metadata],
+                    documents=[old_document]
+                )
+            )
+            
+            logger.debug(f"记忆访问更新成功：{memory_id}，访问次数：{access_count}")
+            return True
+        
+        except Exception as e:
+            logger.error(f"更新记忆访问失败：{e}", exc_info=True)
+            return False
     
     # ========================================================================
     # 容量管理

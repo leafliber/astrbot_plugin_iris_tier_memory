@@ -32,8 +32,7 @@ async def handle_llm_response(
         component_manager: 组件管理器实例
     """
     # 提取助手响应内容
-    # TODO: 根据 AstrBot API 确认响应内容的字段名
-    assistant_msg = resp.content  # 或 resp.completion_text
+    assistant_msg = resp.completion_text
     
     if not assistant_msg:
         logger.debug("LLM 响应内容为空，跳过添加")

@@ -242,8 +242,21 @@ class ProfileStorage(Component):
         """
         config = get_config()
         if config.get("isolation_config.enable_persona_isolation"):
-            # 从上下文获取当前人格ID
-            # TODO: 实现从 context 获取 persona_id 的逻辑
-            # 目前返回默认值
-            return getattr(self._context, 'persona_id', 'default')
+            # 尝试从 context 获取当前激活的人格 ID
+            # AstrBot 的 StarContext 可能有 persona_id 属性
+            persona_id = getattr(self._context, 'persona_id', None)
+            
+            # 如果 context 没有 persona_id，尝试从内部 context 获取
+            if not persona_id and hasattr(self._context, 'context'):
+                inner_context = self._context.context
+                persona_id = getattr(inner_context, 'persona_id', None)
+            
+            # 如果仍然没有，尝试从 event 获取
+            if not persona_id and hasattr(self._context, 'event'):
+                event = self._context.event
+                persona_id = getattr(event, 'persona_id', None)
+            
+            # 如果都没有，返回默认值
+            return persona_id or 'default'
+        
         return "default"

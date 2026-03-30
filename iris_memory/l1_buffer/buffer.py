@@ -354,8 +354,13 @@ class L1Buffer(Component):
             summary = await summarizer.summarize(queue)
             
             if summary:
-                # 阶段 5：将总结写入 L2（阶段 3 实现）
                 logger.info(f"总结完成：{queue_key}, 长度：{len(summary)}")
+                
+                # 阶段 3：将总结写入 L2 记忆库
+                memory_id = await self._write_summary_to_l2(group_id, queue, summary)
+                
+                # 阶段 4：从总结中提取实体和关系，存储到知识图谱
+                await self._extract_and_store_to_kg(group_id, summary, memory_id)
                 
                 # 阶段 9：更新群聊画像（总结后更新）
                 await self._update_profile_after_summary(group_id, queue, summary)
@@ -428,6 +433,145 @@ class L1Buffer(Component):
         
         except Exception as e:
             logger.error(f"更新群聊画像失败: {e}", exc_info=True)
+    
+    async def _write_summary_to_l2(
+        self,
+        group_id: str,
+        queue: MessageQueue,
+        summary: str
+    ) -> Optional[str]:
+        """将总结写入 L2 记忆库
+        
+        Args:
+            group_id: 群聊ID
+            queue: 消息队列
+            summary: 总结文本
+        
+        Returns:
+            记忆 ID，失败时返回 None
+        """
+        # 检查 L2 记忆库是否启用
+        config = get_config()
+        if not config.get("l2_memory.enable"):
+            logger.debug("L2 记忆库未启用，跳过写入")
+            return None
+        
+        # 获取 L2MemoryAdapter 组件
+        if not self._component_manager:
+            return None
+        
+        l2_adapter = self._component_manager.get_component("l2_memory")
+        if not l2_adapter or not l2_adapter.is_available:
+            logger.debug("L2 记忆库组件不可用，跳过写入")
+            return None
+        
+        try:
+            from iris_memory.l2_memory import MemoryRetriever
+            
+            # 创建记忆检索器
+            retriever = MemoryRetriever(self._component_manager)
+            
+            # 构建元数据
+            metadata = {
+                "group_id": group_id,
+                "source": "l1_summary",
+                "timestamp": datetime.now().isoformat(),
+                "confidence": 0.8,  # L1 总结的默认置信度
+            }
+            
+            # 提取活跃用户列表（从 queue 中）
+            active_users = list(set(msg.source for msg in queue if msg.role == "user"))
+            if active_users:
+                metadata["active_users"] = ",".join(active_users)
+            
+            # 写入记忆
+            memory_id = await retriever.add_from_summary(summary, metadata)
+            
+            if memory_id:
+                logger.info(f"已将总结写入 L2 记忆库：{memory_id}")
+            else:
+                logger.warning("写入 L2 记忆库失败")
+            
+            return memory_id
+        
+        except Exception as e:
+            logger.error(f"写入 L2 记忆库失败: {e}", exc_info=True)
+            return None
+    
+    async def _extract_and_store_to_kg(
+        self,
+        group_id: str,
+        summary: str,
+        memory_id: Optional[str]
+    ) -> None:
+        """从总结中提取实体和关系，存储到知识图谱
+        
+        Args:
+            group_id: 群聊ID
+            summary: 总结文本
+            memory_id: L2 记忆 ID（可选）
+        """
+        # 检查知识图谱是否启用
+        config = get_config()
+        if not config.get("l3_kg.enable"):
+            logger.debug("L3 知识图谱未启用，跳过实体提取")
+            return
+        
+        # 获取组件
+        if not self._component_manager:
+            return
+        
+        llm_manager = self._component_manager.get_component("llm_manager")
+        if not llm_manager or not llm_manager.is_available:
+            logger.debug("LLM Manager 不可用，跳过实体提取")
+            return
+        
+        kg_adapter = self._component_manager.get_component("l3_kg")
+        if not kg_adapter or not kg_adapter.is_available:
+            logger.debug("L3 知识图谱组件不可用，跳过实体提取")
+            return
+        
+        try:
+            from iris_memory.l3_kg import EntityExtractor
+            
+            # 创建实体提取器
+            extractor = EntityExtractor(llm_manager)
+            
+            # 构建上下文信息
+            context = {
+                "group_id": group_id,
+                "source_memory_id": memory_id,
+            }
+            
+            # 提取实体和关系
+            result = await extractor.extract_from_text(summary, context)
+            
+            if not result.nodes and not result.edges:
+                logger.debug("未从总结中提取到实体或关系")
+                return
+            
+            # 存储节点到图谱
+            node_count = 0
+            for node in result.nodes:
+                success = await kg_adapter.add_node(node)
+                if success:
+                    node_count += 1
+            
+            # 存储边到图谱
+            edge_count = 0
+            for edge in result.edges:
+                success = await kg_adapter.add_edge(edge)
+                if success:
+                    edge_count += 1
+            
+            logger.info(
+                f"已将实体和关系存储到知识图谱："
+                f"{node_count}/{len(result.nodes)} 个节点，"
+                f"{edge_count}/{len(result.edges)} 条边"
+            )
+        
+        except Exception as e:
+            logger.error(f"提取实体和存储到图谱失败: {e}", exc_info=True)
     
     def get_queue_stats(self, group_id: str) -> Optional[Dict]:
         """获取队列统计信息

@@ -71,9 +71,24 @@ def create_components(context: "Context") -> Tuple[Component, ...]:
     if config.get("l2_memory.enable"):
         # 延迟导入，避免循环依赖
         from iris_memory.l2_memory import L2MemoryAdapter
-        # TODO: 支持人格隔离时，从配置读取 persona_id
-        components.append(L2MemoryAdapter(persona_id="default"))
-        logger.debug("已添加 L2MemoryAdapter 组件")
+        
+        # 获取当前人格 ID（如果启用人格隔离）
+        persona_id = "default"
+        if config.get("isolation_config.enable_persona_isolation"):
+            # 尝试从 context 获取 persona_id
+            # AstrBot 的 StarContext 可能有 persona_id 属性
+            persona_id = getattr(context, 'persona_id', None)
+            
+            # 如果 context 没有 persona_id，尝试从内部 context 获取
+            if not persona_id and hasattr(context, 'context'):
+                inner_context = context.context
+                persona_id = getattr(inner_context, 'persona_id', None)
+            
+            # 如果都没有，使用默认值
+            persona_id = persona_id or 'default'
+        
+        components.append(L2MemoryAdapter(persona_id=persona_id))
+        logger.debug(f"已添加 L2MemoryAdapter 组件，persona_id: {persona_id}")
     
     # 阶段4: L3 知识图谱
     if config.get("l3_kg.enable"):
