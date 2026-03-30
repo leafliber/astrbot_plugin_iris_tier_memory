@@ -1,43 +1,122 @@
 <template>
   <v-app>
-    <!-- 顶部导航栏 -->
-    <v-app-bar color="primary" dark>
-      <v-app-bar-title>
-        Iris Memory
+    <!-- 导航抽屉 -->
+    <v-navigation-drawer v-model="drawer" :rail="rail" permanent>
+      <v-list-item
+        prepend-icon="mdi-brain"
+        title="Iris Memory"
+        nav
+        @click="rail = !rail"
+      >
+        <template #append>
+          <v-btn
+            :icon="rail ? 'mdi-chevron-right' : 'mdi-chevron-left'"
+            variant="text"
+            size="small"
+          />
+        </template>
+      </v-list-item>
+
+      <v-divider />
+
+      <v-list density="compact" nav>
+        <v-list-item
+          v-for="item in navItems"
+          :key="item.to"
+          :to="item.to"
+          :prepend-icon="item.icon"
+          :title="item.title"
+          :value="item.to"
+          color="primary"
+        />
+      </v-list>
+    </v-navigation-drawer>
+
+    <!-- 顶部应用栏 -->
+    <v-app-bar color="surface" elevation="0" border="b">
+      <v-app-bar-title class="text-h6">
+        {{ currentTitle }}
       </v-app-bar-title>
 
-      <v-spacer />
+      <template #append>
+        <!-- 刷新按钮 -->
+        <v-btn
+          icon="mdi-refresh"
+          variant="text"
+          :loading="loading"
+          @click="handleRefresh"
+        />
 
-      <v-btn to="/memory" text>
-        <v-icon left>mdi-brain</v-icon>
-        记忆
-      </v-btn>
-
-      <v-btn to="/profile" text>
-        <v-icon left>mdi-account</v-icon>
-        画像
-      </v-btn>
-
-      <v-btn to="/stats" text>
-        <v-icon left>mdi-chart-bar</v-icon>
-        统计
-      </v-btn>
+        <!-- 主题切换 -->
+        <v-btn
+          :icon="darkMode ? 'mdi-weather-sunny' : 'mdi-weather-night'"
+          variant="text"
+          @click="toggleTheme"
+        />
+      </template>
     </v-app-bar>
 
-    <!-- 主内容区 -->
+    <!-- 主内容 -->
     <v-main>
-      <router-view />
+      <v-container fluid class="pa-4">
+        <router-view v-slot="{ Component }">
+          <keep-alive>
+            <component :is="Component" />
+          </keep-alive>
+        </router-view>
+      </v-container>
     </v-main>
+
+    <!-- 错误提示 -->
+    <v-snackbar
+      v-model="showError"
+      color="error"
+      :timeout="3000"
+      location="top"
+    >
+      {{ error }}
+    </v-snackbar>
   </v-app>
 </template>
 
 <script setup lang="ts">
-// 根组件
-</script>
+import { ref, computed, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import { storeToRefs } from 'pinia'
+import { useAppStore } from '@/stores'
 
-<style>
-/* 全局样式 */
-.v-main {
-  background-color: #f5f5f5;
+const route = useRoute()
+const appStore = useAppStore()
+
+const { loading, error, darkMode } = storeToRefs(appStore)
+
+const drawer = ref(true)
+const rail = ref(false)
+const showError = ref(false)
+
+const navItems = [
+  { to: '/dashboard', title: '仪表盘', icon: 'mdi-view-dashboard' },
+  { to: '/memory', title: '记忆管理', icon: 'mdi-brain' },
+  { to: '/profile', title: '画像管理', icon: 'mdi-account-group' },
+  { to: '/stats', title: '数据统计', icon: 'mdi-chart-bar' }
+]
+
+const currentTitle = computed(() => {
+  const item = navItems.find(i => i.to === route.path)
+  return item?.title || 'Iris Memory'
+})
+
+const handleRefresh = () => {
+  // 触发刷新事件
+  window.dispatchEvent(new CustomEvent('iris:refresh'))
 }
-</style>
+
+const toggleTheme = () => {
+  appStore.toggleTheme()
+}
+
+// 监听错误
+watch(error, (val) => {
+  showError.value = !!val
+})
+</script>

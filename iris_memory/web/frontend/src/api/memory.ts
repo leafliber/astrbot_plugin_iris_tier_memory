@@ -1,71 +1,46 @@
-import api, { ApiResponse } from './request'
+import type {
+  ApiResponse,
+  L1ListResponse,
+  L2SearchRequest,
+  L2SearchResponse,
+  KGGraph
+} from '@/types'
+import apiClient from './request'
 
-// 记忆结果类型
-export interface MemoryResult {
-  content: string
-  score: number
-  metadata: Record<string, any>
-  timestamp?: string
-}
-
-// 消息类型
-export interface Message {
-  role: string
-  content: string
-  timestamp?: string
-  user_id?: string
-}
-
-// 图谱节点类型
-export interface GraphNode {
-  id: string
-  label: string
-  name: string
-  confidence: number
-}
-
-// 图谱边类型
-export interface GraphEdge {
-  source: string
-  target: string
-  relation: string
-}
-
-// 记忆 API
-export const memoryApi = {
-  // 搜索 L2 记忆
-  searchL2: async (
-    query: string,
-    groupId?: string,
-    topK: number = 10
-  ): Promise<ApiResponse<{ results: MemoryResult[] }>> => {
-    return api.post('/memory/l2/search', {
-      query,
-      group_id: groupId,
-      top_k: topK
-    })
-  },
-
-  // 获取 L1 缓冲列表
-  listL1: async (
-    groupId?: string
-  ): Promise<ApiResponse<{ messages: Message[]; count: number }>> => {
-    return api.get('/memory/l1/list', {
-      params: { group_id: groupId }
-    })
-  },
-
-  // 获取 L3 图谱数据
-  getL3Graph: async (
-    groupId?: string
-  ): Promise<ApiResponse<{ nodes: GraphNode[]; edges: GraphEdge[] }>> => {
-    return api.get('/memory/l3/graph', {
-      params: { group_id: groupId }
-    })
-  },
-
-  // 获取 L2 统计
-  getL2Stats: async (): Promise<ApiResponse<{ stats: any }>> => {
-    return api.get('/memory/l2/stats')
+// L1 缓冲
+export const getL1Messages = async (groupId?: string): Promise<L1ListResponse> => {
+  const params = groupId ? { group_id: groupId } : {}
+  const response = await apiClient.get<ApiResponse<L1ListResponse>>('/memory/l1/list', { params })
+  if (!response.success) {
+    throw new Error(response.error || '获取L1缓冲失败')
   }
+  return response.data!
+}
+
+// L2 搜索
+export const searchL2Memory = async (params: L2SearchRequest): Promise<L2SearchResponse> => {
+  const response = await apiClient.post<ApiResponse<L2SearchResponse>>('/memory/l2/search', params)
+  if (!response.success) {
+    throw new Error(response.error || '搜索L2记忆失败')
+  }
+  return response.data!
+}
+
+// L2 统计
+export const getL2Stats = async (): Promise<{ total_count: number; group_count: number }> => {
+  const response = await apiClient.get<ApiResponse<{ total_count: number; group_count: number }>>('/memory/l2/stats')
+  if (!response.success) {
+    throw new Error(response.error || '获取L2统计失败')
+  }
+  return response.data!
+}
+
+// L3 图谱
+export const getL3Graph = async (groupId?: string): Promise<KGGraph> => {
+  const params = groupId ? { group_id: groupId } : {}
+  const response = await apiClient.get<ApiResponse<KGGraph>>('/memory/l3/graph', { params })
+  if (!response.success) {
+    throw new Error(response.error || '获取L3图谱失败')
+  }
+  return response.data!
 }

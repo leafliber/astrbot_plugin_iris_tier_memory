@@ -1,40 +1,39 @@
-import { createRouter, createWebHistory } from 'vue-router'
-import type { RouteRecordRaw } from 'vue-router'
+import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router'
 
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
-    redirect: '/memory'
+    redirect: '/dashboard'
+  },
+  {
+    path: '/dashboard',
+    name: 'Dashboard',
+    component: () => import('@/views/DashboardView.vue'),
+    meta: { title: '仪表盘', icon: 'mdi-view-dashboard' }
   },
   {
     path: '/memory',
     name: 'Memory',
     component: () => import('@/views/MemoryView.vue'),
-    meta: { title: '记忆管理' }
+    meta: { title: '记忆管理', icon: 'mdi-brain' }
   },
   {
     path: '/profile',
     name: 'Profile',
     component: () => import('@/views/ProfileView.vue'),
-    meta: { title: '画像编辑' }
+    meta: { title: '画像管理', icon: 'mdi-account-group' }
   },
   {
     path: '/stats',
     name: 'Stats',
     component: () => import('@/views/StatsView.vue'),
-    meta: { title: '统计图表' }
+    meta: { title: '数据统计', icon: 'mdi-chart-bar' }
   }
 ]
 
 const router = createRouter({
-  history: createWebHistory('/iris/'),  // 基础路径
+  history: createWebHistory('/iris'),
   routes
-})
-
-// 路由守卫：设置页面标题
-router.beforeEach((to, from, next) => {
-  document.title = `${to.meta.title || 'Iris Memory'} - AstrBot`
-  next()
 })
 
 export default router

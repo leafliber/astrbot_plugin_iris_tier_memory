@@ -1,63 +1,47 @@
-import api, { ApiResponse } from './request'
+import type { ApiResponse, GroupProfile, UserProfile, GroupListItem } from '@/types'
+import apiClient from './request'
 
-// 画像数据类型
-export interface Profile {
-  [key: string]: any
-}
-
-// 群聊画像类型
-export interface GroupProfile extends Profile {
-  group_id: string
-  atmosphere?: string
-  active_users?: string[]
-  topics?: string[]
-  last_active_time?: string
-}
-
-// 用户画像类型
-export interface UserProfile extends Profile {
-  user_id: string
-  nickname?: string
-  interests?: string[]
-  personality_tags?: string[]
-  last_active_time?: string
-}
-
-// 群聊列表项
-export interface GroupListItem {
-  group_id: string
-  group_name?: string
-  member_count?: number
-}
-
-// 画像 API
-export const profileApi = {
-  // 获取群聊画像
-  getGroupProfile: async (groupId: string): Promise<ApiResponse<{ profile: GroupProfile }>> => {
-    return api.get(`/profile/group/${groupId}`)
-  },
-
-  // 更新群聊画像
-  updateGroupProfile: async (groupId: string, data: Partial<GroupProfile>): Promise<ApiResponse> => {
-    return api.put(`/profile/group/${groupId}`, data)
-  },
-
-  // 获取用户画像
-  getUserProfile: async (userId: string, groupId?: string): Promise<ApiResponse<{ profile: UserProfile }>> => {
-    return api.get(`/profile/user/${userId}`, {
-      params: { group_id: groupId }
-    })
-  },
-
-  // 更新用户画像
-  updateUserProfile: async (userId: string, data: Partial<UserProfile>, groupId?: string): Promise<ApiResponse> => {
-    return api.put(`/profile/user/${userId}`, data, {
-      params: { group_id: groupId }
-    })
-  },
-
-  // 获取群聊列表
-  listGroups: async (): Promise<ApiResponse<{ groups: GroupListItem[] }>> => {
-    return api.get('/profile/groups')
+// 获取群聊画像
+export const getGroupProfile = async (groupId: string): Promise<GroupProfile> => {
+  const response = await apiClient.get<ApiResponse<GroupProfile>>(`/profile/group/${groupId}`)
+  if (!response.success) {
+    throw new Error(response.error || '获取群聊画像失败')
   }
+  return response.data! || {}
+}
+
+// 更新群聊画像
+export const updateGroupProfile = async (groupId: string, data: Partial<GroupProfile>): Promise<void> => {
+  const response = await apiClient.put<ApiResponse<void>>(`/profile/group/${groupId}`, data)
+  if (!response.success) {
+    throw new Error(response.error || '更新群聊画像失败')
+  }
+}
+
+// 获取用户画像
+export const getUserProfile = async (userId: string, groupId?: string): Promise<UserProfile> => {
+  const params = groupId ? { group_id: groupId } : {}
+  const response = await apiClient.get<ApiResponse<UserProfile>>(`/profile/user/${userId}`, { params })
+  if (!response.success) {
+    throw new Error(response.error || '获取用户画像失败')
+  }
+  return response.data! || {}
+}
+
+// 更新用户画像
+export const updateUserProfile = async (userId: string, data: Partial<UserProfile>, groupId?: string): Promise<void> => {
+  const params = groupId ? { group_id: groupId } : {}
+  const response = await apiClient.put<ApiResponse<void>>(`/profile/user/${userId}`, data, { params })
+  if (!response.success) {
+    throw new Error(response.error || '更新用户画像失败')
+  }
+}
+
+// 获取群聊列表
+export const getGroupList = async (): Promise<GroupListItem[]> => {
+  const response = await apiClient.get<ApiResponse<GroupListItem[]>>('/profile/groups')
+  if (!response.success) {
+    throw new Error(response.error || '获取群聊列表失败')
+  }
+  return response.data! || []
 }

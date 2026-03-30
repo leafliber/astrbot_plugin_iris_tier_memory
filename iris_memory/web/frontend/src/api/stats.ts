@@ -1,62 +1,44 @@
-import api, { ApiResponse } from './request'
+import type {
+  ApiResponse,
+  MemoryStats,
+  TokenStatsResponse,
+  KGStats,
+  SystemStats
+} from '@/types'
+import apiClient from './request'
 
-// Token 统计类型
-export interface TokenStats {
-  total_input_tokens: number
-  total_output_tokens: number
-  total_calls: number
+// Token 统计
+export const getTokenStats = async (): Promise<TokenStatsResponse> => {
+  const response = await apiClient.get<ApiResponse<TokenStatsResponse>>('/stats/token')
+  if (!response.success) {
+    throw new Error(response.error || '获取Token统计失败')
+  }
+  return response.data!
 }
 
-// 记忆统计类型
-export interface MemoryStats {
-  l1: {
-    queue_length?: number
-    max_capacity?: number
+// 记忆统计
+export const getMemoryStats = async (): Promise<MemoryStats> => {
+  const response = await apiClient.get<ApiResponse<MemoryStats>>('/stats/memory')
+  if (!response.success) {
+    throw new Error(response.error || '获取记忆统计失败')
   }
-  l2: {
-    total_count?: number
-    group_count?: number
-  }
-  l3: {
-    node_count?: number
-    edge_count?: number
-  }
+  return response.data!
 }
 
-// 图谱统计类型
-export interface KGStats {
-  node_count?: number
-  edge_count?: number
-  node_types?: Record<string, number>
-  relation_types?: Record<string, number>
-}
-
-// 系统统计类型
-export interface SystemStats {
-  components: Record<string, boolean>
-  uptime?: number
-  version?: string
-}
-
-// 统计 API
-export const statsApi = {
-  // 获取 Token 统计
-  getTokenStats: async (): Promise<ApiResponse<{ stats: Record<string, TokenStats> }>> => {
-    return api.get('/stats/token')
-  },
-
-  // 获取记忆统计
-  getMemoryStats: async (): Promise<ApiResponse<{ stats: MemoryStats }>> => {
-    return api.get('/stats/memory')
-  },
-
-  // 获取图谱统计
-  getKgStats: async (): Promise<ApiResponse<{ stats: KGStats }>> => {
-    return api.get('/stats/kg')
-  },
-
-  // 获取系统统计
-  getSystemStats: async (): Promise<ApiResponse<{ stats: SystemStats }>> => {
-    return api.get('/stats/system')
+// 知识图谱统计
+export const getKGStats = async (): Promise<KGStats> => {
+  const response = await apiClient.get<ApiResponse<KGStats>>('/stats/kg')
+  if (!response.success) {
+    throw new Error(response.error || '获取图谱统计失败')
   }
+  return response.data!
+}
+
+// 系统统计
+export const getSystemStats = async (): Promise<SystemStats> => {
+  const response = await apiClient.get<ApiResponse<SystemStats>>('/stats/system')
+  if (!response.success) {
+    throw new Error(response.error || '获取系统统计失败')
+  }
+  return response.data!
 }

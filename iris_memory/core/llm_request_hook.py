@@ -7,7 +7,7 @@ LLM 请求钩子处理模块
 - 图片解析（related 模式）
 - 知识图谱检索结果注入（未来扩展）
 """
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, List, cast
 
 from iris_memory.core import get_logger
 from iris_memory.platform import get_adapter
