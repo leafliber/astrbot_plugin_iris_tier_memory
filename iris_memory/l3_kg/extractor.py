@@ -156,6 +156,14 @@ class EntityExtractor:
             node_name_to_id = {}
             
             for node_data in data.get("nodes", []):
+                # 构建 properties，包含 active_users
+                properties = node_data.get("properties", {})
+                
+                # 添加活跃用户信息（用于检索时基于用户ID扩展）
+                active_users = context.get("active_users", [])
+                if active_users:
+                    properties["active_users"] = ",".join(active_users)
+                
                 node = GraphNode(
                     id="",  # 稍后生成
                     label=node_data["label"],
@@ -163,7 +171,8 @@ class EntityExtractor:
                     content=node_data["content"],
                     confidence=node_data.get("confidence", 1.0),
                     source_memory_id=context.get("source_memory_id"),
-                    group_id=context.get("group_id")
+                    group_id=context.get("group_id"),
+                    properties=properties
                 )
                 node.id = node.generate_id()
                 nodes.append(node)
@@ -185,6 +194,17 @@ class EntityExtractor:
                     )
                     edges.append(edge)
             
+            # 添加用户节点和关系
+            active_users = context.get("active_users", [])
+            if active_users:
+                user_nodes, user_edges = self._create_user_nodes_and_edges(
+                    active_users=active_users,
+                    existing_nodes=nodes,
+                    context=context
+                )
+                nodes.extend(user_nodes)
+                edges.extend(user_edges)
+            
             return ExtractionResult(
                 nodes=nodes,
                 edges=edges,
@@ -197,3 +217,75 @@ class EntityExtractor:
         except Exception as e:
             logger.error(f"解析提取结果失败：{e}")
             return ExtractionResult()
+    
+    def _create_user_nodes_and_edges(
+        self,
+        active_users: list[str],
+        existing_nodes: list[GraphNode],
+        context: dict
+    ) -> tuple[list[GraphNode], list[GraphEdge]]:
+        """为活跃用户创建 Person 节点以及与提取实体的关系
+        
+        Args:
+            active_users: 活跃用户 ID 列表
+            existing_nodes: 已提取的节点列表
+            context: 上下文信息
+        
+        Returns:
+            (用户节点列表, 用户关系边列表)
+        """
+        user_nodes = []
+        user_edges = []
+        
+        # 为每个活跃用户创建 Person 节点
+        for user_id in active_users:
+            user_node = GraphNode(
+                id="",  # 稍后生成
+                label="Person",
+                name=user_id,
+                content=f"用户 {user_id}",
+                confidence=1.0,  # 用户ID置信度最高
+                source_memory_id=context.get("source_memory_id"),
+                group_id=context.get("group_id"),
+                properties={"is_user": "true"}
+            )
+            user_node.id = user_node.generate_id()
+            user_nodes.append(user_node)
+        
+        # 建立用户与提取实体的关系
+        # 选择重要的实体类型进行关联
+        important_labels = {"Topic", "Event", "Concept"}
+        important_nodes = [n for n in existing_nodes if n.label in important_labels]
+        
+        for user_node in user_nodes:
+            # 用户与每个重要实体建立 DISCUSSED 关系
+            for entity_node in important_nodes[:5]:  # 最多关联5个实体
+                edge = GraphEdge(
+                    source_id=user_node.id,
+                    target_id=entity_node.id,
+                    relation_type="DISCUSSED",
+                    confidence=0.8,
+                    source_memory_id=context.get("source_memory_id")
+                )
+                user_edges.append(edge)
+        
+        # 用户之间的关系（KNOWS）
+        if len(user_nodes) > 1:
+            for i, user_node_1 in enumerate(user_nodes):
+                for user_node_2 in user_nodes[i+1:]:
+                    edge = GraphEdge(
+                        source_id=user_node_1.id,
+                        target_id=user_node_2.id,
+                        relation_type="KNOWS",
+                        confidence=0.7,
+                        source_memory_id=context.get("source_memory_id")
+                    )
+                    user_edges.append(edge)
+        
+        if user_nodes:
+            logger.info(
+                f"为 {len(user_nodes)} 个活跃用户创建了 Person 节点，"
+                f"关联 {len(user_edges)} 条边"
+            )
+        
+        return user_nodes, user_edges

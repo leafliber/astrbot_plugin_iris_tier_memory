@@ -269,20 +269,31 @@ async def _inject_l3_knowledge_graph(
 ) -> None:
     """注入 L3 知识图谱到 LLM 请求（内部函数）
     
-    执行图谱检索并注入到上下文，支持两种模式：
-    1. 纯图谱检索：仅开启 L3 时执行
-    2. 图增强检索：开启 L3 + 图增强时，基于 L2 结果扩展
+    执行图谱检索并注入到上下文，支持两种互补模式：
+    
+    1. 图增强模式（推荐）：
+       - 基于用户查询文本在图谱中搜索相关节点
+       - 使用关键词提取 + 多跳路径扩展
+       - 配置项：l2_memory.enable_graph_enhancement
+    
+    2. 纯图谱检索模式（补充）：
+       - 基于 L2 记忆关联的图谱节点 ID 进行路径扩展
+       - 需要记忆在写入时记录 kg_node_id 等元数据
+       - 自动执行（当 L2 结果包含节点 ID 时）
+    
+    两种模式可以共存，产生的图谱上下文会合并注入。
     
     流程：
     1. 检查 L3 是否启用
-    2. 执行图谱检索（纯检索 or 图增强）
-    3. 格式化并注入到 system_prompt
+    2. 执行图谱检索（图增强 + 纯图谱检索）
+    3. 合并并格式化图谱上下文
+    4. 注入到 system_prompt
     
     Args:
         event: AstrBot 消息事件对象
         req: LLM 提供者请求对象
         component_manager: 组件管理器实例
-        l2_results: L2 检索结果（用于图增强）
+        l2_results: L2 检索结果（用于图增强和纯图谱检索）
     """
     from iris_memory.config import get_config
     config = get_config()
@@ -298,67 +309,80 @@ async def _inject_l3_knowledge_graph(
         logger.debug("L3 知识图谱组件不可用，跳过图谱注入")
         return
     
-    # 3. 获取群聊ID
+    # 3. 获取群聊ID、用户ID和用户消息
     adapter = get_adapter(event)
     group_id = adapter.get_group_id(event)
+    user_id = adapter.get_user_id(event)
+    
+    # 提取用户消息作为查询文本（用于图增强）
+    query_text = ""
+    if hasattr(event, 'message_str') and event.message_str:
+        query_text = event.message_str
+    elif hasattr(event, 'get_message_str'):
+        query_text = event.get_message_str()
     
     try:
-        # 4. 检查是否启用图增强
+        # 4. 图谱检索逻辑
         enable_graph_enhancement = config.get("l2_memory.enable_graph_enhancement", False)
+        graph_contexts: List[str] = []  # 收集图谱上下文
+        memory_node_ids: List[str] = []  # 收集记忆节点 ID
         
-        if enable_graph_enhancement and l2_results:
-            # 图增强模式：基于 L2 结果扩展
+        # 4.1 从 L2 结果中提取节点 ID（用于两种模式）
+        if l2_results:
+            for result in l2_results:
+                node_id = result.metadata.get("memory_node_id") or \
+                          result.metadata.get("kg_node_id") or \
+                          result.metadata.get("node_id") or \
+                          result.metadata.get("entity_id")
+                if node_id:
+                    memory_node_ids.append(node_id)
+        
+        # 4.2 图增强模式：基于查询文本 + 节点 ID + 用户 ID 扩展
+        if enable_graph_enhancement:
             from iris_memory.enhancement import GraphEnhancer
             
             enhancer = GraphEnhancer(component_manager)
             enhanced_results, graph_context = await enhancer.enhance(
                 memories=l2_results,
-                group_id=group_id
+                group_id=group_id,
+                query=query_text,
+                node_ids=memory_node_ids,  # 传入节点 ID
+                user_id=user_id  # 传入用户 ID
             )
             
             if graph_context:
-                # 注入图谱上下文
-                if req.prompt:
-                    req.prompt = graph_context + "\n\n" + req.prompt
-                else:
-                    req.prompt = graph_context
-                
-                logger.debug(f"已注入图增强检索结果到群聊 {group_id}")
+                graph_contexts.append(graph_context)
+                logger.debug(f"图增强检索完成（关键词 + {len(memory_node_ids)} 个节点 + 用户 {user_id}）")
         
-        else:
-            # 纯图谱检索模式：直接检索图谱
+        # 4.3 纯图谱检索模式：仅基于节点 ID 扩展（当图增强未启用时）
+        elif memory_node_ids:
             from iris_memory.l3_kg import GraphRetriever
             
             retriever = GraphRetriever(kg_adapter)
             
-            # 从 L2 结果中提取节点 ID（如果有）
-            memory_node_ids = []
-            if l2_results:
-                for result in l2_results:
-                    node_id = result.metadata.get("memory_node_id")
-                    if node_id:
-                        memory_node_ids.append(node_id)
+            # 基于记忆节点进行路径扩展
+            nodes, edges = await retriever.retrieve_with_expansion(
+                memory_node_ids=memory_node_ids,
+                group_id=group_id
+            )
             
-            if memory_node_ids:
-                # 基于记忆节点进行路径扩展
-                nodes, edges = await retriever.retrieve_with_expansion(
-                    memory_node_ids=memory_node_ids,
-                    group_id=group_id
-                )
+            if nodes or edges:
+                # 格式化图谱结果
+                graph_text = retriever.format_for_context(nodes, edges)
                 
-                if nodes or edges:
-                    # 格式化图谱结果
-                    graph_text = retriever.format_for_context(nodes, edges)
-                    
-                    if graph_text:
-                        if req.prompt:
-                            req.prompt = graph_text + "\n\n" + req.prompt
-                        else:
-                            req.prompt = graph_text
-                        
-                        logger.debug(f"已注入 L3 知识图谱到群聊 {group_id}")
+                if graph_text:
+                    graph_contexts.append(graph_text)
+                    logger.debug(f"纯图谱检索完成（基于 {len(memory_node_ids)} 个记忆节点）")
+        
+        # 4.4 注入所有图谱上下文
+        if graph_contexts:
+            combined_context = "\n\n".join(graph_contexts)
+            if req.prompt:
+                req.prompt = combined_context + "\n\n" + req.prompt
             else:
-                logger.debug("没有记忆节点 ID，跳过纯图谱检索")
+                req.prompt = combined_context
+            
+            logger.info(f"已注入图谱上下文到群聊 {group_id}（共 {len(graph_contexts)} 部分）")
     
     except Exception as e:
         logger.error(f"L3 知识图谱注入失败: {e}", exc_info=True)

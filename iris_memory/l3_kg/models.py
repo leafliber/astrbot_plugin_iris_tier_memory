@@ -10,8 +10,9 @@ NODE_TYPE_WHITELIST = {"Person", "Event", "Concept", "Location", "Item", "Topic"
 
 # 关系类型白名单
 RELATION_TYPE_WHITELIST = {
-    "KNOWS", "MENTIONED_IN", "RELATED_TO",
-    "PART_OF", "LOCATED_AT", "HAPPENED_AT"
+    "KNOWS", "MENTIONED", "RELATED_TO",
+    "PART_OF", "LOCATED_AT", "HAPPENED_AT",
+    "DISCUSSED", "PARTICIPATED"  # 新增：用户与实体/事件的关系
 }
 
 

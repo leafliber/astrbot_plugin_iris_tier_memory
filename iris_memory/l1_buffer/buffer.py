@@ -356,11 +356,14 @@ class L1Buffer(Component):
             if summary:
                 logger.info(f"总结完成：{queue_key}, 长度：{len(summary)}")
                 
+                # 提取活跃用户列表
+                active_users = list(set(msg.source for msg in queue if msg.role == "user"))
+                
                 # 阶段 3：将总结写入 L2 记忆库
                 memory_id = await self._write_summary_to_l2(group_id, queue, summary)
                 
                 # 阶段 4：从总结中提取实体和关系，存储到知识图谱
-                await self._extract_and_store_to_kg(group_id, summary, memory_id)
+                await self._extract_and_store_to_kg(group_id, summary, memory_id, active_users)
                 
                 # 阶段 9：更新群聊画像（总结后更新）
                 await self._update_profile_after_summary(group_id, queue, summary)
@@ -502,7 +505,8 @@ class L1Buffer(Component):
         self,
         group_id: str,
         summary: str,
-        memory_id: Optional[str]
+        memory_id: Optional[str],
+        active_users: Optional[list[str]] = None
     ) -> None:
         """从总结中提取实体和关系，存储到知识图谱
         
@@ -510,6 +514,7 @@ class L1Buffer(Component):
             group_id: 群聊ID
             summary: 总结文本
             memory_id: L2 记忆 ID（可选）
+            active_users: 活跃用户ID列表（可选）
         """
         # 检查知识图谱是否启用
         config = get_config()
@@ -541,6 +546,7 @@ class L1Buffer(Component):
             context = {
                 "group_id": group_id,
                 "source_memory_id": memory_id,
+                "active_users": active_users or [],
             }
             
             # 提取实体和关系
