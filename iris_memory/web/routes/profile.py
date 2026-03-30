@@ -114,15 +114,20 @@ async def update_group_profile(group_id: str):
                 'error': '画像系统不可用'
             }), 503
         
-        # 更新画像（需要实现update_group_profile方法）
-        # TODO: 在ProfileStorage中实现update_group_profile方法
+        # 更新画像
+        success = await profile_storage.update_group_profile(group_id, data)
         
-        logger.info(f"更新群聊画像成功：group_id={group_id}")
-        
-        return jsonify({
-            'success': True,
-            'message': '画像已更新'
-        })
+        if success:
+            logger.info(f"更新群聊画像成功：group_id={group_id}")
+            return jsonify({
+                'success': True,
+                'message': '画像已更新'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': '更新失败'
+            }), 500
     
     except Exception as e:
         logger.error(f"更新群聊画像失败：{e}", exc_info=True)
@@ -241,15 +246,24 @@ async def update_user_profile(user_id: str):
                 'error': '画像系统不可用'
             }), 503
         
-        # 更新画像（需要实现update_user_profile方法）
-        # TODO: 在ProfileStorage中实现update_user_profile方法
+        # 更新画像
+        success = await profile_storage.update_user_profile(
+            user_id=user_id,
+            group_id=group_id or "default",
+            updates=data
+        )
         
-        logger.info(f"更新用户画像成功：user_id={user_id}, group_id={group_id}")
-        
-        return jsonify({
-            'success': True,
-            'message': '画像已更新'
-        })
+        if success:
+            logger.info(f"更新用户画像成功：user_id={user_id}, group_id={group_id}")
+            return jsonify({
+                'success': True,
+                'message': '画像已更新'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': '更新失败'
+            }), 500
     
     except Exception as e:
         logger.error(f"更新用户画像失败：{e}", exc_info=True)
@@ -288,9 +302,8 @@ async def list_group_profiles():
                 'error': '画像系统不可用'
             }), 503
         
-        # 获取群聊列表（需要实现list_groups方法）
-        # TODO: 在ProfileStorage中实现list_groups方法
-        groups = []
+        # 获取群聊列表
+        groups = await profile_storage.list_groups()
         
         return jsonify({
             'success': True,

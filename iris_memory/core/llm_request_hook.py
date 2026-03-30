@@ -32,9 +32,10 @@ async def preprocess_llm_request(
     
     执行所有 LLM 对话前的预处理逻辑（按顺序执行）：
     1. L1 上下文注入
-    2. 用户画像注入
-    3. 图片解析（related 模式）
-    4. TODO: 知识图谱检索结果注入（阶段 4）
+    2. L2 记忆注入（向量检索）
+    3. L3 知识图谱注入（图谱检索 + 图增强）
+    4. 用户画像注入
+    5. 图片解析（related 模式）
     
     Args:
         event: AstrBot 消息事件对象
@@ -42,8 +43,9 @@ async def preprocess_llm_request(
         component_manager: 组件管理器实例
     """
     await _inject_l1_context(event, req, component_manager)
+    l2_results = await _inject_l2_memory(event, req, component_manager)
+    await _inject_l3_knowledge_graph(event, req, component_manager, l2_results)
     await _inject_user_profile(event, req, component_manager)
-    await _inject_enhanced_memory(event, req, component_manager)
     await _parse_images_if_related_mode(event, req, component_manager)
 
 
@@ -162,39 +164,43 @@ async def _inject_user_profile(
         logger.debug(f"已注入画像信息到群聊 {group_id} 用户 {user_id}")
 
 
-async def _inject_enhanced_memory(
+async def _inject_l2_memory(
     event: "AstrMessageEvent",
     req: "ProviderRequest",
     component_manager: "ComponentManager"
-) -> None:
-    """注入增强记忆到 LLM 请求（内部函数）
+) -> List["MemorySearchResult"]:
+    """注入 L2 记忆到 LLM 请求（内部函数）
     
-    整合 L2 记忆检索和知识图谱增强检索。
+    执行 L2 向量检索并注入到上下文。
     
     流程：
-    1. L2 向量检索
-    2. 图增强检索（可选）
+    1. 检查 L2 是否启用
+    2. 执行向量检索
     3. Token 预算控制
-    4. 重排序（可选）
-    5. 注入到上下文
+    4. 注入到 system_prompt
+    5. 返回检索结果（供 L3 使用）
     
     Args:
         event: AstrBot 消息事件对象
         req: LLM 提供者请求对象
         component_manager: 组件管理器实例
+    
+    Returns:
+        L2 检索结果列表
     """
-    # 1. 检查是否启用 L2 记忆库
     from iris_memory.config import get_config
     config = get_config()
+    
+    # 1. 检查是否启用 L2 记忆库
     if not config.get("l2_memory.enable"):
         logger.debug("L2 记忆库未启用，跳过记忆注入")
-        return
+        return []
     
     # 2. 获取 L2MemoryAdapter 组件
     l2_adapter = component_manager.get_component("l2_memory")
     if not l2_adapter or not l2_adapter.is_available:
         logger.debug("L2 记忆库组件不可用，跳过记忆注入")
-        return
+        return []
     
     # 3. 获取群聊ID和用户消息
     adapter = get_adapter(event)
@@ -209,43 +215,180 @@ async def _inject_enhanced_memory(
     
     if not query_text:
         logger.debug("无法获取用户消息，跳过记忆检索")
-        return
+        return []
     
     try:
-        # 4. 创建增强检索器
+        # 4. 创建记忆检索器
         from iris_memory.l2_memory import MemoryRetriever
-        from iris_memory.enhancement import EnhancedMemoryRetriever
         
-        # 获取 LLMManager（用于重排序）
-        llm_manager = component_manager.get_component("llm_manager")
+        retriever = MemoryRetriever(component_manager)
         
-        # 创建增强检索器
-        enhanced_retriever = EnhancedMemoryRetriever(
-            component_manager=component_manager,
-            llm_manager=llm_manager
+        # 5. 执行向量检索
+        results = await retriever.retrieve(query_text, group_id)
+        
+        if not results:
+            logger.debug("L2 检索未找到相关记忆")
+            return []
+        
+        # 6. Token 预算控制
+        from iris_memory.enhancement import TokenBudgetController
+        
+        budget_controller = TokenBudgetController()
+        max_tokens = config.get("token_budget_max_tokens", 2000)
+        
+        trimmed_results, actual_tokens = budget_controller.trim_memories(
+            memories=results,
+            max_tokens=max_tokens
         )
         
-        # 5. 执行增强检索（整合 L2 + 图增强 + Token 预算控制）
-        memory_context = await enhanced_retriever.retrieve_and_format(
-            query=query_text,
-            group_id=group_id,
-            max_tokens=config.get("token_budget_max_tokens", 2000)
-        )
+        logger.debug(f"L2 检索到 {len(results)} 条记忆，裁剪后 {len(trimmed_results)} 条")
         
-        if not memory_context:
-            logger.debug("增强检索未找到相关记忆")
-            return
+        # 7. 格式化并注入到 system_prompt
+        memory_text = _format_l2_memories_for_injection(trimmed_results)
         
-        # 6. 注入到 system_prompt
-        if req.prompt:
-            req.prompt = memory_context + "\n\n" + req.prompt
-        else:
-            req.prompt = memory_context
+        if memory_text:
+            if req.prompt:
+                req.prompt = memory_text + "\n\n" + req.prompt
+            else:
+                req.prompt = memory_text
+            
+            logger.debug(f"已注入 L2 记忆到群聊 {group_id}")
         
-        logger.debug(f"已注入增强记忆到群聊 {group_id}")
+        return trimmed_results
     
     except Exception as e:
-        logger.error(f"增强记忆注入失败: {e}", exc_info=True)
+        logger.error(f"L2 记忆注入失败: {e}", exc_info=True)
+        return []
+
+
+async def _inject_l3_knowledge_graph(
+    event: "AstrMessageEvent",
+    req: "ProviderRequest",
+    component_manager: "ComponentManager",
+    l2_results: List["MemorySearchResult"]
+) -> None:
+    """注入 L3 知识图谱到 LLM 请求（内部函数）
+    
+    执行图谱检索并注入到上下文，支持两种模式：
+    1. 纯图谱检索：仅开启 L3 时执行
+    2. 图增强检索：开启 L3 + 图增强时，基于 L2 结果扩展
+    
+    流程：
+    1. 检查 L3 是否启用
+    2. 执行图谱检索（纯检索 or 图增强）
+    3. 格式化并注入到 system_prompt
+    
+    Args:
+        event: AstrBot 消息事件对象
+        req: LLM 提供者请求对象
+        component_manager: 组件管理器实例
+        l2_results: L2 检索结果（用于图增强）
+    """
+    from iris_memory.config import get_config
+    config = get_config()
+    
+    # 1. 检查是否启用 L3 知识图谱
+    if not config.get("l3_kg.enable"):
+        logger.debug("L3 知识图谱未启用，跳过图谱注入")
+        return
+    
+    # 2. 获取 L3KGAdapter 组件
+    kg_adapter = component_manager.get_component("l3_kg")
+    if not kg_adapter or not kg_adapter.is_available:
+        logger.debug("L3 知识图谱组件不可用，跳过图谱注入")
+        return
+    
+    # 3. 获取群聊ID
+    adapter = get_adapter(event)
+    group_id = adapter.get_group_id(event)
+    
+    try:
+        # 4. 检查是否启用图增强
+        enable_graph_enhancement = config.get("l2_memory.enable_graph_enhancement", False)
+        
+        if enable_graph_enhancement and l2_results:
+            # 图增强模式：基于 L2 结果扩展
+            from iris_memory.enhancement import GraphEnhancer
+            
+            enhancer = GraphEnhancer(component_manager)
+            enhanced_results, graph_context = await enhancer.enhance(
+                memories=l2_results,
+                group_id=group_id
+            )
+            
+            if graph_context:
+                # 注入图谱上下文
+                if req.prompt:
+                    req.prompt = graph_context + "\n\n" + req.prompt
+                else:
+                    req.prompt = graph_context
+                
+                logger.debug(f"已注入图增强检索结果到群聊 {group_id}")
+        
+        else:
+            # 纯图谱检索模式：直接检索图谱
+            from iris_memory.l3_kg import GraphRetriever
+            
+            retriever = GraphRetriever(kg_adapter)
+            
+            # 从 L2 结果中提取节点 ID（如果有）
+            memory_node_ids = []
+            if l2_results:
+                for result in l2_results:
+                    node_id = result.metadata.get("memory_node_id")
+                    if node_id:
+                        memory_node_ids.append(node_id)
+            
+            if memory_node_ids:
+                # 基于记忆节点进行路径扩展
+                nodes, edges = await retriever.retrieve_with_expansion(
+                    memory_node_ids=memory_node_ids,
+                    group_id=group_id
+                )
+                
+                if nodes or edges:
+                    # 格式化图谱结果
+                    graph_text = retriever.format_for_context(nodes, edges)
+                    
+                    if graph_text:
+                        if req.prompt:
+                            req.prompt = graph_text + "\n\n" + req.prompt
+                        else:
+                            req.prompt = graph_text
+                        
+                        logger.debug(f"已注入 L3 知识图谱到群聊 {group_id}")
+            else:
+                logger.debug("没有记忆节点 ID，跳过纯图谱检索")
+    
+    except Exception as e:
+        logger.error(f"L3 知识图谱注入失败: {e}", exc_info=True)
+
+
+def _format_l2_memories_for_injection(
+    memories: List["MemorySearchResult"]
+) -> str:
+    """格式化 L2 记忆为注入文本
+    
+    Args:
+        memories: L2 记忆检索结果列表
+    
+    Returns:
+        格式化的记忆文本
+    """
+    if not memories:
+        return ""
+    
+    lines = ["[历史记忆]"]
+    
+    for i, memory in enumerate(memories, 1):
+        # 添加记忆内容
+        lines.append(f"{i}. {memory.content}")
+        
+        # 可选：添加置信度（如果足够高）
+        if memory.confidence and memory.confidence > 0.9:
+            lines.append(f"   （置信度：{memory.confidence:.2f}）")
+    
+    return chr(10).join(lines)
 
 
 def _format_profiles_for_injection(

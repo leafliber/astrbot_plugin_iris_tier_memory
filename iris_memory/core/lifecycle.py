@@ -4,6 +4,7 @@
 负责组件的创建、初始化和清理等生命周期管理。
 """
 from typing import Optional, Tuple, TYPE_CHECKING
+from datetime import datetime
 
 from iris_memory.core import get_logger, ComponentManager, Component
 
@@ -15,6 +16,9 @@ logger = get_logger("lifecycle")
 # 全局组件管理器实例
 _component_manager: Optional[ComponentManager] = None
 
+# 全局启动时间
+_start_time: Optional[datetime] = None
+
 
 def set_component_manager(manager: ComponentManager) -> None:
     """设置全局组件管理器
@@ -22,8 +26,9 @@ def set_component_manager(manager: ComponentManager) -> None:
     Args:
         manager: 组件管理器实例
     """
-    global _component_manager
+    global _component_manager, _start_time
     _component_manager = manager
+    _start_time = datetime.now()
     logger.debug("已设置全局组件管理器")
 
 
@@ -39,6 +44,19 @@ def get_component_manager() -> ComponentManager:
     if _component_manager is None:
         raise RuntimeError("组件管理器未初始化，请先调用 set_component_manager()")
     return _component_manager
+
+
+def get_uptime() -> int:
+    """获取运行时间（秒）
+    
+    Returns:
+        运行时间（秒）
+    """
+    if _start_time is None:
+        return 0
+    
+    delta = datetime.now() - _start_time
+    return int(delta.total_seconds())
 
 
 def create_components(context: "Context") -> Tuple[Component, ...]:

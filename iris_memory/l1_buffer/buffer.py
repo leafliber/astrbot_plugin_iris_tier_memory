@@ -5,7 +5,7 @@ Iris Tier Memory - L1 消息缓冲组件
 支持群聊隔离和人格切换时清空所有队列。
 """
 
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 from datetime import datetime
 
 from iris_memory.core import Component, get_logger
@@ -593,4 +593,28 @@ class L1Buffer(Component):
             "group_id": queue_key,
             "message_count": len(queue),
             "total_tokens": queue.total_tokens,
+        }
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """获取 L1 缓冲的全局统计信息
+        
+        Returns:
+            统计信息字典
+        """
+        config = get_config()
+        
+        # 计算总消息数和总 Token 数
+        total_messages = 0
+        total_tokens = 0
+        queue_count = len(self._queues)
+        
+        for queue in self._queues.values():
+            total_messages += len(queue)
+            total_tokens += queue.total_tokens
+        
+        return {
+            "queue_count": queue_count,
+            "total_messages": total_messages,
+            "total_tokens": total_tokens,
+            "max_capacity": config.get("l1_buffer.max_capacity", 100),
         }

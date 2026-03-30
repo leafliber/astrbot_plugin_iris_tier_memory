@@ -576,3 +576,48 @@ class L2MemoryAdapter(Component):
         except Exception as e:
             logger.error(f"淘汰记忆失败：{e}", exc_info=True)
             return 0
+    
+    async def get_stats(self) -> Dict[str, Any]:
+        """获取 L2 记忆库的统计信息
+        
+        Returns:
+            统计信息字典，包含：
+            - total_count: 总记忆数
+            - group_count: 群聊数量
+        """
+        if not self._is_available or not self._collection:
+            return {
+                "total_count": 0,
+                "group_count": 0
+            }
+        
+        try:
+            loop = asyncio.get_event_loop()
+            
+            # 获取所有记忆
+            results = await loop.run_in_executor(
+                None,
+                lambda: self._collection.get()
+            )
+            
+            total_count = len(results["ids"]) if results["ids"] else 0
+            
+            # 统计群聊数量（从 metadata 中提取 group_id）
+            group_ids = set()
+            if results["metadatas"]:
+                for metadata in results["metadatas"]:
+                    group_id = metadata.get("group_id")
+                    if group_id:
+                        group_ids.add(group_id)
+            
+            return {
+                "total_count": total_count,
+                "group_count": len(group_ids)
+            }
+        
+        except Exception as e:
+            logger.error(f"获取统计信息失败：{e}", exc_info=True)
+            return {
+                "total_count": 0,
+                "group_count": 0
+            }

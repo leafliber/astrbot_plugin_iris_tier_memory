@@ -260,3 +260,92 @@ class ProfileStorage(Component):
             return persona_id or 'default'
         
         return "default"
+    
+    async def update_group_profile(
+        self, 
+        group_id: str, 
+        updates: dict
+    ) -> bool:
+        """更新群聊画像
+        
+        Args:
+            group_id: 群聊ID
+            updates: 更新字段字典
+        
+        Returns:
+            是否更新成功
+        """
+        try:
+            profile = await self.get_group_profile(group_id)
+            
+            if not profile:
+                # 如果画像不存在，创建新的
+                profile = GroupProfile(group_id=group_id)
+            
+            # 更新字段
+            for key, value in updates.items():
+                if hasattr(profile, key):
+                    setattr(profile, key, value)
+            
+            # 保存画像
+            await self.save_group_profile(profile)
+            logger.info(f"更新群聊画像成功: {group_id}")
+            return True
+        
+        except Exception as e:
+            logger.error(f"更新群聊画像失败: {e}", exc_info=True)
+            return False
+    
+    async def update_user_profile(
+        self, 
+        user_id: str, 
+        group_id: str,
+        updates: dict
+    ) -> bool:
+        """更新用户画像
+        
+        Args:
+            user_id: 用户ID
+            group_id: 群聊ID
+            updates: 更新字段字典
+        
+        Returns:
+            是否更新成功
+        """
+        try:
+            profile = await self.get_user_profile(user_id, group_id)
+            
+            if not profile:
+                # 如果画像不存在，创建新的
+                profile = UserProfile(user_id=user_id)
+            
+            # 更新字段
+            for key, value in updates.items():
+                if hasattr(profile, key):
+                    setattr(profile, key, value)
+            
+            # 保存画像
+            await self.save_user_profile(profile, group_id)
+            logger.info(f"更新用户画像成功: {user_id}@{group_id}")
+            return True
+        
+        except Exception as e:
+            logger.error(f"更新用户画像失败: {e}", exc_info=True)
+            return False
+    
+    async def list_groups(self) -> list:
+        """获取所有群聊列表
+        
+        Returns:
+            群聊画像列表
+        """
+        try:
+            # 由于 AstrBot KV 存储不支持列出所有键，
+            # 我们无法直接获取所有群聊列表
+            # 这里返回空列表，等待后续实现
+            logger.warning("list_groups 方法暂未实现，需要 AstrBot KV 存储支持")
+            return []
+        
+        except Exception as e:
+            logger.error(f"获取群聊列表失败: {e}", exc_info=True)
+            return []

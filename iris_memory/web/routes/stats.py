@@ -15,6 +15,19 @@ logger = get_logger("web.stats")
 stats_bp = Blueprint('stats', __name__)
 
 
+def _get_uptime() -> int:
+    """获取运行时间（秒）
+    
+    Returns:
+        运行时间（秒）
+    """
+    try:
+        return get_uptime()
+    except Exception as e:
+        logger.warning(f"获取运行时间失败：{e}")
+        return 0
+
+
 @stats_bp.route('/token', methods=['GET'])
 @dashboard_auth.require_auth
 async def get_token_stats():
@@ -113,20 +126,20 @@ async def get_memory_stats():
         # L1 统计
         l1_buffer = manager.get_component("l1_buffer")
         if l1_buffer and l1_buffer.is_available:
-            # TODO: 实现L1统计方法
-            stats['l1'] = {
-                'queue_length': 0,
-                'max_capacity': 0
-            }
+            try:
+                stats['l1'] = l1_buffer.get_stats()
+            except Exception as e:
+                logger.warning(f"获取L1统计失败：{e}")
+                stats['l1'] = {}
         
         # L2 统计
         l2_memory = manager.get_component("l2_memory")
         if l2_memory and l2_memory.is_available:
-            # TODO: 实现L2统计方法
-            stats['l2'] = {
-                'total_count': 0,
-                'group_count': 0
-            }
+            try:
+                stats['l2'] = await l2_memory.get_stats()
+            except Exception as e:
+                logger.warning(f"获取L2统计失败：{e}")
+                stats['l2'] = {}
         
         # L3 统计
         l3_kg = manager.get_component("l3_kg")
@@ -240,7 +253,7 @@ async def get_system_stats():
         
         stats = {
             'components': components,
-            'uptime': 0,  # TODO: 实现运行时间统计
+            'uptime': _get_uptime(),
             'version': '1.0.0'
         }
         
