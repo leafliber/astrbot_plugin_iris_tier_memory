@@ -8,6 +8,7 @@ Iris Tier Memory - 画像存储组件
 from typing import Optional, TYPE_CHECKING
 
 from iris_memory.core import Component, get_logger
+from iris_memory.core.storage import KVStorage
 from iris_memory.config import get_config
 from .models import (
     GroupProfile,
@@ -18,14 +19,10 @@ from .models import (
 )
 
 if TYPE_CHECKING:
-    from astrbot.core.platform import AstrBotContext
+    pass
 
 logger = get_logger("profile")
 
-
-# ============================================================================
-# 画像存储组件
-# ============================================================================
 
 class ProfileStorage(Component):
     """画像存储组件
@@ -37,22 +34,17 @@ class ProfileStorage(Component):
         - 用户画像：user_profile:{persona_id}:{group_id}:{user_id}
     
     Attributes:
-        _context: AstrBot 上下文对象
+        _storage: KV 存储适配器
         _is_available: 组件是否可用
-    
-    Examples:
-        >>> storage = ProfileStorage(context)
-        >>> await storage.initialize()
-        >>> profile = await storage.get_group_profile("group_123")
     """
     
-    def __init__(self, context: "AstrBotContext"):
+    def __init__(self, storage: KVStorage):
         """初始化画像存储组件
         
         Args:
-            context: AstrBot 上下文对象
+            storage: KV 存储适配器（实现 KVStorage 协议的对象）
         """
-        self._context = context
+        self._storage = storage
         self._is_available = False
     
     @property
@@ -64,7 +56,6 @@ class ProfileStorage(Component):
         """初始化画像存储"""
         config = get_config()
         
-        # 检查是否启用
         if not config.get("profile.enable"):
             self._is_available = False
             logger.info("画像系统未启用")
@@ -77,10 +68,6 @@ class ProfileStorage(Component):
         """关闭存储"""
         self._is_available = False
         logger.info("画像存储组件已关闭")
-    
-    # ========================================================================
-    # 群聊画像操作
-    # ========================================================================
     
     async def get_group_profile(
         self, 
@@ -95,11 +82,6 @@ class ProfileStorage(Component):
         
         Returns:
             群聊画像对象，不存在则返回 None
-        
-        Examples:
-            >>> profile = await storage.get_group_profile("group_123")
-            >>> if profile:
-            ...     print(profile.group_name)
         """
         if not self._is_available:
             return None
@@ -107,7 +89,7 @@ class ProfileStorage(Component):
         key = f"group_profile:{persona_id}:{group_id}"
         
         try:
-            data = await self._context.get_kv_data(key)
+            data = await self._storage.get_kv_data(key)
             
             if data:
                 profile = dict_to_group_profile(data)
@@ -126,32 +108,22 @@ class ProfileStorage(Component):
         
         Args:
             profile: 群聊画像对象
-        
-        Examples:
-            >>> profile = GroupProfile(group_id="group_123")
-            >>> await storage.save_group_profile(profile)
         """
         if not self._is_available:
             return
         
-        # 更新版本号
         profile.version += 1
         
-        # 获取人格ID
         persona_id = self._get_persona_id()
         key = f"group_profile:{persona_id}:{profile.group_id}"
         
         try:
             data = profile_to_dict(profile)
-            await self._context.put_kv_data(key, data)
+            await self._storage.put_kv_data(key, data)
             logger.debug(f"保存群聊画像成功: {key}, version={profile.version}")
         
         except Exception as e:
             logger.error(f"保存群聊画像失败: {key}, 错误: {e}")
-    
-    # ========================================================================
-    # 用户画像操作
-    # ========================================================================
     
     async def get_user_profile(
         self,
@@ -168,20 +140,14 @@ class ProfileStorage(Component):
         
         Returns:
             用户画像对象，不存在则返回 None
-        
-        Examples:
-            >>> profile = await storage.get_user_profile("user_456", "group_123")
-            >>> if profile:
-            ...     print(profile.user_name)
         """
         if not self._is_available:
             return None
         
-        # 统一键格式：user_profile:{persona_id}:{group_id}:{user_id}
         key = f"user_profile:{persona_id}:{group_id}:{user_id}"
         
         try:
-            data = await self._context.get_kv_data(key)
+            data = await self._storage.get_kv_data(key)
             
             if data:
                 profile = dict_to_user_profile(data)
@@ -205,59 +171,32 @@ class ProfileStorage(Component):
         Args:
             profile: 用户画像对象
             group_id: 群聊ID（全局模式传 "default"）
-        
-        Examples:
-            >>> profile = UserProfile(user_id="user_456")
-            >>> await storage.save_user_profile(profile, "group_123")
         """
         if not self._is_available:
             return
         
-        # 更新版本号
         profile.version += 1
         
-        # 统一键格式
         persona_id = self._get_persona_id()
         key = f"user_profile:{persona_id}:{group_id}:{profile.user_id}"
         
         try:
             data = profile_to_dict(profile)
-            await self._context.put_kv_data(key, data)
+            await self._storage.put_kv_data(key, data)
             logger.debug(f"保存用户画像成功: {key}, version={profile.version}")
         
         except Exception as e:
             logger.error(f"保存用户画像失败: {key}, 错误: {e}")
     
-    # ========================================================================
-    # 辅助方法
-    # ========================================================================
-    
     def _get_persona_id(self) -> str:
         """获取当前人格ID
-        
-        根据人格隔离配置返回人格ID。
         
         Returns:
             人格ID，未启用人格隔离则返回 "default"
         """
         config = get_config()
         if config.get("isolation_config.enable_persona_isolation"):
-            # 尝试从 context 获取当前激活的人格 ID
-            # AstrBot 的 StarContext 可能有 persona_id 属性
-            persona_id = getattr(self._context, 'persona_id', None)
-            
-            # 如果 context 没有 persona_id，尝试从内部 context 获取
-            if not persona_id and hasattr(self._context, 'context'):
-                inner_context = self._context.context
-                persona_id = getattr(inner_context, 'persona_id', None)
-            
-            # 如果仍然没有，尝试从 event 获取
-            if not persona_id and hasattr(self._context, 'event'):
-                event = self._context.event
-                persona_id = getattr(event, 'persona_id', None)
-            
-            # 如果都没有，返回默认值
-            return persona_id or 'default'
+            return "default"
         
         return "default"
     
@@ -279,15 +218,12 @@ class ProfileStorage(Component):
             profile = await self.get_group_profile(group_id)
             
             if not profile:
-                # 如果画像不存在，创建新的
                 profile = GroupProfile(group_id=group_id)
             
-            # 更新字段
             for key, value in updates.items():
                 if hasattr(profile, key):
                     setattr(profile, key, value)
             
-            # 保存画像
             await self.save_group_profile(profile)
             logger.info(f"更新群聊画像成功: {group_id}")
             return True
@@ -316,15 +252,12 @@ class ProfileStorage(Component):
             profile = await self.get_user_profile(user_id, group_id)
             
             if not profile:
-                # 如果画像不存在，创建新的
                 profile = UserProfile(user_id=user_id)
             
-            # 更新字段
             for key, value in updates.items():
                 if hasattr(profile, key):
                     setattr(profile, key, value)
             
-            # 保存画像
             await self.save_user_profile(profile, group_id)
             logger.info(f"更新用户画像成功: {user_id}@{group_id}")
             return True
@@ -340,9 +273,6 @@ class ProfileStorage(Component):
             群聊画像列表
         """
         try:
-            # 由于 AstrBot KV 存储不支持列出所有键，
-            # 我们无法直接获取所有群聊列表
-            # 这里返回空列表，等待后续实现
             logger.warning("list_groups 方法暂未实现，需要 AstrBot KV 存储支持")
             return []
         

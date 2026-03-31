@@ -9,11 +9,12 @@ from typing import TYPE_CHECKING
 import asyncio
 
 from iris_memory.core import Component, get_logger
+from iris_memory.core.storage import KVStorage
 from iris_memory.config import get_config
 from .models import QuotaStatus
 
 if TYPE_CHECKING:
-    from astrbot.api.star import Context
+    pass
 
 logger = get_logger("image")
 
@@ -28,35 +29,27 @@ class ImageQuotaManager(Component):
     
     数据结构：
         {
-            "date": "2026-03-29",      # 当前日期
-            "used": 15,                 # 已使用次数
-            "total": 200                # 总配额
+            "date": "2026-03-29",
+            "used": 15,
+            "total": 200
         }
     
     Attributes:
-        _context: AstrBot Context 对象
+        _storage: KV 存储适配器
         _is_available: 组件是否可用
         _lock: 异步锁（防止并发竞争）
         _quota_status: 配额状态（内存缓存）
-    
-    Examples:
-        >>> manager = ImageQuotaManager(context)
-        >>> await manager.initialize()
-        >>> if await manager.check_quota():
-        ...     await manager.use_quota()
-        ...     # 执行图片解析
     """
     
-    # KV 存储键名
     KV_KEY = "image_parsing_quota"
     
-    def __init__(self, context: "Context"):
+    def __init__(self, storage: KVStorage):
         """初始化配额管理器
         
         Args:
-            context: AstrBot Context 对象
+            storage: KV 存储适配器（实现 KVStorage 协议的对象）
         """
-        self._context = context
+        self._storage = storage
         self._is_available = False
         self._lock = asyncio.Lock()
         self._quota_status: QuotaStatus | None = None
@@ -70,13 +63,11 @@ class ImageQuotaManager(Component):
         """初始化配额管理器"""
         config = get_config()
         
-        # 检查是否启用
         if not config.get("image_parsing.enable"):
             self._is_available = False
             logger.info("图片解析未启用")
             return
         
-        # 加载配额状态
         await self._load_quota_status()
         
         self._is_available = True
@@ -90,28 +81,20 @@ class ImageQuotaManager(Component):
         self._is_available = False
         logger.info("图片解析配额管理器已关闭")
     
-    # ========================================================================
-    # 配额状态管理
-    # ========================================================================
-    
     async def _load_quota_status(self) -> None:
         """从 KV 存储加载配额状态"""
         try:
-            data = await self._context.get_kv_data(self.KV_KEY, {})
+            data = await self._storage.get_kv_data(self.KV_KEY, {})
             
             if data:
                 self._quota_status = QuotaStatus.from_dict(data)
                 logger.debug(f"从 KV 存储加载配额状态：{self._quota_status.date}")
-                
-                # 检查是否需要重置（跨天）
                 await self._check_and_reset_if_needed()
             else:
-                # 首次使用，创建初始状态
                 await self._create_initial_status()
         
         except Exception as e:
             logger.warning(f"从 KV 存储加载配额状态失败：{e}")
-            # 创建初始状态
             await self._create_initial_status()
     
     async def _create_initial_status(self) -> None:
@@ -137,7 +120,7 @@ class ImageQuotaManager(Component):
         
         try:
             data = self._quota_status.to_dict()
-            await self._context.put_kv_data(self.KV_KEY, data)
+            await self._storage.put_kv_data(self.KV_KEY, data)
             logger.debug(f"保存配额状态：{self._quota_status.date}, used={self._quota_status.used}")
         
         except Exception as e:
@@ -157,27 +140,16 @@ class ImageQuotaManager(Component):
             )
             await self.reset_quota()
     
-    # ========================================================================
-    # 配额操作
-    # ========================================================================
-    
     async def check_quota(self) -> bool:
         """检查配额是否充足
         
-        检查前会自动检测是否需要重置配额。
-        
         Returns:
             配额是否充足
-        
-        Examples:
-            >>> if await manager.check_quota():
-            ...     await manager.use_quota()
         """
         if not self._is_available:
             return False
         
         async with self._lock:
-            # 检查是否需要重置
             await self._check_and_reset_if_needed()
             
             if not self._quota_status:
@@ -188,40 +160,30 @@ class ImageQuotaManager(Component):
     async def use_quota(self, count: int = 1) -> bool:
         """使用配额
         
-        原子操作：检查配额并扣减。
-        
         Args:
             count: 使用数量（默认 1）
         
         Returns:
             是否成功使用
-        
-        Examples:
-            >>> success = await manager.use_quota(2)
-            >>> if success:
-            ...     # 执行图片解析
-            ...     pass
         """
         if not self._is_available:
             return False
         
         async with self._lock:
-            # 检查是否需要重置
             await self._check_and_reset_if_needed()
             
             if not self._quota_status:
                 return False
             
-            # 检查配额是否充足
-            if self._quota_status.used + count > self._quota_status.total:
+            if self._quota_status.is_exhausted:
                 logger.warning(
-                    f"配额不足：used={self._quota_status.used}, "
-                    f"total={self._quota_status.total}, request={count}"
+                    f"配额已用尽：{self._quota_status.used}/{self._quota_status.total}"
                 )
                 return False
             
-            # 扣减配额
-            self._quota_status.used += count
+            if not self._quota_status.use(count):
+                return False
+            
             await self._save_quota_status()
             
             logger.debug(
@@ -232,13 +194,7 @@ class ImageQuotaManager(Component):
             return True
     
     async def reset_quota(self) -> None:
-        """重置配额
-        
-        将使用次数归零，更新日期为今天。
-        
-        Examples:
-            >>> await manager.reset_quota()
-        """
+        """重置配额"""
         async with self._lock:
             if not self._quota_status:
                 await self._create_initial_status()
@@ -247,28 +203,15 @@ class ImageQuotaManager(Component):
             config = get_config()
             today = date.today().isoformat()
             
-            # 重置状态
-            self._quota_status.date = today
-            self._quota_status.used = 0
-            self._quota_status.total = config.get("image_parsing.daily_quota", 200)
-            self._quota_status.last_reset_time = datetime.now()
-            
+            self._quota_status.reset(today, config.get("image_parsing.daily_quota", 200))
             await self._save_quota_status()
-            logger.info(f"配额已重置：{today}, total={self._quota_status.total}")
-    
-    # ========================================================================
-    # 状态查询
-    # ========================================================================
+            logger.info(f"配额已重置：{today}")
     
     async def get_status(self) -> QuotaStatus | None:
         """获取当前配额状态
         
         Returns:
             配额状态对象
-        
-        Examples:
-            >>> status = await manager.get_status()
-            >>> print(f"剩余配额：{status.remaining}")
         """
         if not self._is_available:
             return None
@@ -276,8 +219,3 @@ class ImageQuotaManager(Component):
         async with self._lock:
             await self._check_and_reset_if_needed()
             return self._quota_status
-    
-    @property
-    def is_available(self) -> bool:
-        """组件是否可用"""
-        return self._is_available and self._quota_status is not None

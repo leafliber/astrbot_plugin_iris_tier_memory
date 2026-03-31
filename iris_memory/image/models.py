@@ -275,6 +275,32 @@ class QuotaStatus:
             是否已耗尽
         """
         return self.used >= self.total
+    
+    def use(self, count: int = 1) -> bool:
+        """使用配额
+        
+        Args:
+            count: 使用数量
+        
+        Returns:
+            是否成功使用
+        """
+        if self.used + count > self.total:
+            return False
+        self.used += count
+        return True
+    
+    def reset(self, date: str, total: int) -> None:
+        """重置配额
+        
+        Args:
+            date: 新日期
+            total: 新总配额
+        """
+        self.date = date
+        self.used = 0
+        self.total = total
+        self.last_reset_time = datetime.now()
 
 
 # ============================================================================

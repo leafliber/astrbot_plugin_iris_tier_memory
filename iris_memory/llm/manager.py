@@ -11,6 +11,7 @@ import uuid
 import time
 
 from iris_memory.core import Component, get_logger
+from iris_memory.core.storage import KVStorage
 from iris_memory.config import get_config
 from .token_stats import TokenStatsManager
 from .call_log import CallLog
@@ -33,26 +34,21 @@ class LLMManager(Component):
     
     Attributes:
         _context: AstrBot Context 对象
+        _storage: KV 存储适配器
         _token_stats: Token 统计管理器
         _call_logs: 调用日志队列
-    
-    Examples:
-        >>> manager = LLMManager(context)
-        >>> await manager.initialize()
-        >>> response = await manager.generate(
-        ...     prompt="Hello",
-        ...     module="l1_summarizer"
-        ... )
     """
     
-    def __init__(self, context: "Context"):
+    def __init__(self, context: "Context", storage: KVStorage):
         """初始化管理器
         
         Args:
             context: AstrBot Context 对象
+            storage: KV 存储适配器（实现 KVStorage 协议的对象）
         """
         super().__init__()
         self._context = context
+        self._storage = storage
         self._token_stats: Optional[TokenStatsManager] = None
         self._call_logs: deque[CallLog] = deque(maxlen=100)
     
@@ -69,11 +65,8 @@ class LLMManager(Component):
         try:
             config = get_config()
             
-            # 初始化 Token 统计管理器
-            self._token_stats = TokenStatsManager(self._context)
+            self._token_stats = TokenStatsManager(self._storage)
             
-            # 加载调用日志最大条数配置
-            # 注意：隐藏配置使用单层键名，不需要 "hidden." 前缀
             max_logs = config.get("call_log_max_entries", 100)
             self._call_logs = deque(maxlen=max_logs)
             
@@ -89,10 +82,6 @@ class LLMManager(Component):
         """关闭管理器"""
         self._is_available = False
         logger.info("LLMManager 已关闭")
-    
-    # =========================================================================
-    # 核心方法
-    # =========================================================================
     
     async def generate(
         self,
@@ -121,20 +110,12 @@ class LLMManager(Component):
         Raises:
             RuntimeError: LLMManager 未初始化
             Exception: LLM 调用失败
-        
-        Examples:
-            >>> response = await manager.generate(
-            ...     prompt="Hello",
-            ...     module="l1_summarizer"
-            ... )
         """
         if not self._is_available:
             raise RuntimeError("LLMManager 未初始化")
         
-        # 确定使用的 provider
         actual_provider_id = await self._resolve_provider(module, provider_id)
         
-        # 记录开始时间
         start_time = time.time()
         call_id = str(uuid.uuid4())
         
@@ -143,20 +124,16 @@ class LLMManager(Component):
                 f"LLM 调用开始：module={module}, provider={actual_provider_id or 'default'}"
             )
             
-            # 调用 AstrBot LLM
             llm_resp: "LLMResponse" = await self._context.llm_generate(
                 chat_provider_id=actual_provider_id,
                 prompt=prompt,
                 contexts=contexts or [],
             )
             
-            # 提取响应
             response_text = llm_resp.completion_text or ""
             
-            # 计算耗时
             duration_ms = int((time.time() - start_time) * 1000)
             
-            # 记录 Token 使用
             input_tokens = llm_resp.usage.prompt_tokens if llm_resp.usage else 0
             output_tokens = llm_resp.usage.completion_tokens if llm_resp.usage else 0
             
@@ -167,7 +144,6 @@ class LLMManager(Component):
                     output_tokens=output_tokens
                 )
             
-            # 记录调用日志
             log = CallLog(
                 call_id=call_id,
                 timestamp=datetime.now(),
@@ -191,7 +167,6 @@ class LLMManager(Component):
             return response_text
         
         except Exception as e:
-            # 记录失败日志
             duration_ms = int((time.time() - start_time) * 1000)
             log = CallLog(
                 call_id=call_id,
@@ -230,10 +205,8 @@ class LLMManager(Component):
         if provider_id:
             return provider_id
         
-        # 从配置获取模块对应的 provider
         config = get_config()
         
-        # 模块名到配置键的映射
         module_config_map = {
             "l1_summarizer": "l1_buffer.summary_provider",
             "l2_summarizer": "l2_memory.summary_provider",
@@ -249,7 +222,6 @@ class LLMManager(Component):
             if configured_provider:
                 return configured_provider
         
-        # 返回空字符串，使用默认 provider
         return ""
     
     def _truncate_text(self, text: str, max_length: int) -> str:
@@ -266,10 +238,6 @@ class LLMManager(Component):
             return text
         return text[:max_length] + "..."
     
-    # =========================================================================
-    # LLMCaller 协议接口
-    # =========================================================================
-    
     async def call(self, prompt: str, provider: str = "") -> str:
         """调用 LLM 生成响应（LLMCaller 协议接口）
         
@@ -281,19 +249,12 @@ class LLMManager(Component):
         
         Returns:
             生成的文本响应
-        
-        Examples:
-            >>> response = await manager.call("Hello", provider="gpt-4o")
         """
         return await self.generate(
             prompt=prompt,
             module="default",
             provider_id=provider if provider else None
         )
-    
-    # =========================================================================
-    # Vision 支持
-    # =========================================================================
     
     async def generate_with_images(
         self,
@@ -320,23 +281,14 @@ class LLMManager(Component):
         Raises:
             RuntimeError: LLMManager 未初始化
             Exception: LLM 调用失败
-        
-        Examples:
-            >>> response = await manager.generate_with_images(
-            ...     prompt="这张图片是什么？",
-            ...     image_urls=["https://example.com/image.jpg"],
-            ...     module="image_parsing"
-            ... )
         """
         if not self._is_available:
             raise RuntimeError("LLMManager 未初始化")
         
-        # 构建多模态 content
         content: List[Dict[str, Any]] = [
             {"type": "text", "text": prompt}
         ]
         
-        # 添加图片
         for url in image_urls:
             content.append({
                 "type": "image_url",
@@ -345,24 +297,18 @@ class LLMManager(Component):
                 }
             })
         
-        # 构建 contexts
         contexts = [{
             "role": "user",
             "content": content
         }]
         
-        # 调用 generate（传入空 prompt，因为 prompt 已包含在 contexts 中）
         return await self.generate(
-            prompt="",  # prompt 已包含在 contexts 中
+            prompt="",
             module=module,
             provider_id=provider_id,
             contexts=contexts,
             **kwargs
         )
-    
-    # =========================================================================
-    # 统计接口
-    # =========================================================================
     
     async def get_token_stats(self, module: str = "global") -> Dict[str, Any]:
         """获取 Token 统计
@@ -372,10 +318,6 @@ class LLMManager(Component):
         
         Returns:
             统计信息字典
-        
-        Examples:
-            >>> stats = await manager.get_token_stats("l1_summarizer")
-            >>> print(stats["total_tokens"])
         """
         if not self._token_stats:
             return {
@@ -398,11 +340,6 @@ class LLMManager(Component):
         
         Returns:
             模块名到统计信息的映射
-        
-        Examples:
-            >>> all_stats = await manager.get_all_token_stats()
-            >>> for module, stats in all_stats.items():
-            ...     print(f"{module}: {stats['total_tokens']}")
         """
         if not self._token_stats:
             return {}
@@ -422,9 +359,6 @@ class LLMManager(Component):
         
         Args:
             module: 模块名（默认 "global"）
-        
-        Examples:
-            >>> await manager.reset_token_stats("l1_summarizer")
         """
         if self._token_stats:
             await self._token_stats.reset_stats(module)
@@ -438,11 +372,6 @@ class LLMManager(Component):
         
         Returns:
             调用日志列表
-        
-        Examples:
-            >>> logs = manager.get_recent_call_logs(10)
-            >>> for log in logs:
-            ...     print(f"{log['module']}: {log['duration_ms']}ms")
         """
         logs = list(self._call_logs)[-limit:]
         return [

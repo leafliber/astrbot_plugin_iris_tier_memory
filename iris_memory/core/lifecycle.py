@@ -9,7 +9,7 @@ from datetime import datetime
 from iris_memory.core import get_logger, ComponentManager, Component
 
 if TYPE_CHECKING:
-    from astrbot.api.star import Context
+    from astrbot.api.star import Context, Star
 
 logger = get_logger("lifecycle")
 
@@ -59,13 +59,14 @@ def get_uptime() -> int:
     return int(delta.total_seconds())
 
 
-def create_components(context: "Context") -> Tuple[Component, ...]:
+def create_components(context: "Context", star: "Star") -> Tuple[Component, ...]:
     """创建所有组件实例
     
     根据配置创建需要的组件实例，但暂不初始化。
     
     Args:
         context: AstrBot Context 对象
+        star: AstrBot Star 实例（插件实例），用于 KV 存储
     
     Returns:
         组件元组
@@ -76,7 +77,7 @@ def create_components(context: "Context") -> Tuple[Component, ...]:
     
     # 阶段5: LLM 管理器（最先创建，其他组件可能依赖）
     from iris_memory.llm import LLMManager
-    components.append(LLMManager(context))
+    components.append(LLMManager(context, star))
     logger.debug("已添加 LLMManager 组件")
     
     # 阶段2: L1 消息缓冲
@@ -122,13 +123,13 @@ def create_components(context: "Context") -> Tuple[Component, ...]:
     # 阶段9: 画像存储
     if config.get("profile.enable"):
         from iris_memory.profile import ProfileStorage
-        components.append(ProfileStorage(context))
+        components.append(ProfileStorage(star))
         logger.debug("已添加 ProfileStorage 组件")
     
     # 阶段10: 图片限额管理器
     if config.get("image_parsing.enable"):
         from iris_memory.image import ImageQuotaManager
-        components.append(ImageQuotaManager(context))
+        components.append(ImageQuotaManager(star))
         logger.debug("已添加 ImageQuotaManager 组件")
     
     return tuple(components)
