@@ -4,9 +4,9 @@ Iris Tier Memory - 平台适配器工厂
 根据消息事件的平台类型，返回对应的平台适配器实例。
 
 支持的平台：
-- AIOCQHTTP: QQ 个人号（OneBot11 协议）
-- QQOFFICIAL: QQ 官方机器人（待实现）
-- GEWECHAT: 个微（待实现）
+- qq/aiocqhttp: QQ 个人号（OneBot11 协议）
+- qqofficial: QQ 官方机器人（待实现）
+- gewechat: 个微（待实现）
 
 设计要点：
 - 单例模式：每种平台适配器只创建一个实例
@@ -31,6 +31,7 @@ logger = get_logger("platform.factory")
 # 平台类型枚举值 -> 适配器类的映射（None 表示待实现）
 _ADAPTER_REGISTRY: dict[str, type[PlatformAdapter] | None] = {
     "aiocqhttp": OneBot11Adapter,  # QQ 个人号（OneBot11）
+    "qq": OneBot11Adapter,  # QQ（AstrBot v4.x 统一命名）
     "qqofficial": None,  # QQ 官方机器人（待实现）
     "gewechat": None,  # 个微（待实现）
 }
