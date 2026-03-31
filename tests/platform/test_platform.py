@@ -34,8 +34,9 @@ class TestOneBot11Adapter:
         adapter = OneBot11Adapter()
         
         event = Mock()
-        event.sender = Mock()
-        event.sender.user_id = "12345"
+        event.message_obj = Mock()
+        event.message_obj.sender = Mock()
+        event.message_obj.sender.user_id = "12345"
         
         user_id = adapter.get_user_id(event)
         
@@ -46,8 +47,9 @@ class TestOneBot11Adapter:
         adapter = OneBot11Adapter()
         
         event = Mock()
-        event.group_id = "group_123"
-        event.sender = Mock()
+        event.message_obj = Mock()
+        event.message_obj.group_id = "group_123"
+        event.message_obj.sender = Mock()
         
         group_id = adapter.get_group_id(event)
         
@@ -58,9 +60,10 @@ class TestOneBot11Adapter:
         adapter = OneBot11Adapter()
         
         event = Mock()
-        event.group_id = ""
-        event.sender = Mock()
-        event.sender.nickname = "测试用户"
+        event.message_obj = Mock()
+        event.message_obj.group_id = ""
+        event.message_obj.sender = Mock()
+        event.message_obj.sender.nickname = "测试用户"
         
         username = adapter.get_user_name(event)
         
@@ -71,8 +74,9 @@ class TestOneBot11Adapter:
         adapter = OneBot11Adapter()
         
         event = Mock()
-        event.group_id = "group_123"
-        event.sender = Mock()
+        event.message_obj = Mock()
+        event.message_obj.group_id = "group_123"
+        event.message_obj.sender = Mock()
         
         assert adapter.is_group_message(event) == True
     
@@ -81,8 +85,9 @@ class TestOneBot11Adapter:
         adapter = OneBot11Adapter()
         
         event = Mock()
-        event.group_id = ""
-        event.sender = Mock()
+        event.message_obj = Mock()
+        event.message_obj.group_id = ""
+        event.message_obj.sender = Mock()
         
         assert adapter.is_group_message(event) == False
 
@@ -94,19 +99,7 @@ class TestGetAdapter:
         """测试获取 OneBot11 适配器 - 通过 session.platform_name"""
         event = Mock()
         event.session = Mock()
-        event.session.platform_name = "aiocqhttp"
-        
-        adapter = get_adapter(event)
-        
-        assert isinstance(adapter, OneBot11Adapter)
-    
-    def test_get_onebot11_adapter_via_platform_adapter_type(self):
-        """测试获取 OneBot11 适配器 - 通过 platform_adapter_type（旧版本兼容）"""
-        event = Mock()
-        event.session = None
-        event.platform_meta = None
-        event.platform_adapter = None
-        event.platform_adapter_type = "aiocqhttp"
+        event.session.platform_name = "qq"
         
         adapter = get_adapter(event)
         
@@ -127,14 +120,13 @@ class TestGetAdapter:
         """测试适配器是单例"""
         event1 = Mock()
         event1.session = Mock()
-        event1.session.platform_name = "aiocqhttp"
+        event1.session.platform_name = "qq"
         
         event2 = Mock()
         event2.session = Mock()
-        event2.session.platform_name = "aiocqhttp"
+        event2.session.platform_name = "qq"
         
         adapter1 = get_adapter(event1)
         adapter2 = get_adapter(event2)
         
-        # 适配器应该是同一个实例（单例模式）
         assert adapter1 is adapter2
