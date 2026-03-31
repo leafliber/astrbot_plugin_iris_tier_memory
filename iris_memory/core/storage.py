@@ -20,12 +20,12 @@ class KVStorage(Protocol):
         delete_kv_data: 删除数据
     """
     
-    async def get_kv_data(self, key: str, default: Any = None) -> Any:
+    async def get_kv_data(self, key: str, default: Any) -> Any:
         """获取数据
         
         Args:
             key: 键名
-            default: 默认值
+            default: 默认值（必需）
         
         Returns:
             存储的值，不存在则返回默认值

@@ -89,7 +89,7 @@ class ProfileStorage(Component):
         key = f"group_profile:{persona_id}:{group_id}"
         
         try:
-            data = await self._storage.get_kv_data(key)
+            data = await self._storage.get_kv_data(key, None)
             
             if data:
                 profile = dict_to_group_profile(data)
@@ -147,7 +147,7 @@ class ProfileStorage(Component):
         key = f"user_profile:{persona_id}:{group_id}:{user_id}"
         
         try:
-            data = await self._storage.get_kv_data(key)
+            data = await self._storage.get_kv_data(key, None)
             
             if data:
                 profile = dict_to_user_profile(data)
