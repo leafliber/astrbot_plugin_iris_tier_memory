@@ -34,9 +34,8 @@ class TestOneBot11Adapter:
         adapter = OneBot11Adapter()
         
         event = Mock()
-        event.message_obj = Mock()
-        event.message_obj.sender = Mock()
-        event.message_obj.sender.user_id = "12345"
+        event.sender = Mock()
+        event.sender.user_id = "12345"
         
         user_id = adapter.get_user_id(event)
         
@@ -47,8 +46,8 @@ class TestOneBot11Adapter:
         adapter = OneBot11Adapter()
         
         event = Mock()
-        event.message_obj = Mock()
-        event.message_obj.group_id = "group_123"
+        event.group_id = "group_123"
+        event.sender = Mock()
         
         group_id = adapter.get_group_id(event)
         
@@ -59,42 +58,55 @@ class TestOneBot11Adapter:
         adapter = OneBot11Adapter()
         
         event = Mock()
-        event.message_obj = Mock()
-        event.message_obj.sender = Mock()
-        event.message_obj.sender.nickname = "测试用户"
+        event.group_id = ""
+        event.sender = Mock()
+        event.sender.nickname = "测试用户"
         
-        username = adapter.get_username(event)
+        username = adapter.get_user_name(event)
         
         assert username == "测试用户"
     
-    def test_is_group_chat_true(self):
+    def test_is_group_message_true(self):
         """测试群聊判断 - 群聊"""
         adapter = OneBot11Adapter()
         
         event = Mock()
-        event.message_obj = Mock()
-        event.message_obj.group_id = "group_123"
+        event.group_id = "group_123"
+        event.sender = Mock()
         
-        assert adapter.is_group_chat(event) == True
+        assert adapter.is_group_message(event) == True
     
-    def test_is_group_chat_false(self):
+    def test_is_group_message_false(self):
         """测试群聊判断 - 私聊"""
         adapter = OneBot11Adapter()
         
         event = Mock()
-        event.message_obj = Mock()
-        event.message_obj.group_id = None
+        event.group_id = ""
+        event.sender = Mock()
         
-        assert adapter.is_group_chat(event) == False
+        assert adapter.is_group_message(event) == False
 
 
 class TestGetAdapter:
     """get_adapter 工厂方法测试"""
     
-    def test_get_onebot11_adapter(self):
-        """测试获取 OneBot11 适配器"""
+    def test_get_onebot11_adapter_via_session(self):
+        """测试获取 OneBot11 适配器 - 通过 session.platform_name"""
         event = Mock()
-        event.platform_adapter_type = "onebot_11"
+        event.session = Mock()
+        event.session.platform_name = "aiocqhttp"
+        
+        adapter = get_adapter(event)
+        
+        assert isinstance(adapter, OneBot11Adapter)
+    
+    def test_get_onebot11_adapter_via_platform_adapter_type(self):
+        """测试获取 OneBot11 适配器 - 通过 platform_adapter_type（旧版本兼容）"""
+        event = Mock()
+        event.session = None
+        event.platform_meta = None
+        event.platform_adapter = None
+        event.platform_adapter_type = "aiocqhttp"
         
         adapter = get_adapter(event)
         
@@ -103,7 +115,8 @@ class TestGetAdapter:
     def test_get_unsupported_adapter(self):
         """测试获取不支持的适配器"""
         event = Mock()
-        event.platform_adapter_type = "unsupported_platform"
+        event.session = Mock()
+        event.session.platform_name = "unsupported_platform"
         
         with pytest.raises(UnsupportedPlatformError) as exc_info:
             get_adapter(event)
@@ -113,10 +126,12 @@ class TestGetAdapter:
     def test_adapter_is_singleton(self):
         """测试适配器是单例"""
         event1 = Mock()
-        event1.platform_adapter_type = "onebot_11"
+        event1.session = Mock()
+        event1.session.platform_name = "aiocqhttp"
         
         event2 = Mock()
-        event2.platform_adapter_type = "onebot_11"
+        event2.session = Mock()
+        event2.session.platform_name = "aiocqhttp"
         
         adapter1 = get_adapter(event1)
         adapter2 = get_adapter(event2)

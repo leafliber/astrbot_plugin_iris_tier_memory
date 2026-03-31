@@ -115,16 +115,29 @@ def _get_platform_type(event: "AstrMessageEvent") -> str:
     Raises:
         ValueError: 无法获取平台类型
     """
-    # 方式1：从 event.platform_adapter 获取（推荐）
+    # 方式1：从 event.session.platform_name 获取（推荐，AstrBot v4.x）
+    if hasattr(event, "session") and event.session is not None:
+        if hasattr(event.session, "platform_name"):
+            platform_name = event.session.platform_name
+            if platform_name is not None:
+                return str(platform_name).lower()
+    
+    # 方式2：从 event.platform_meta 获取
+    if hasattr(event, "platform_meta") and event.platform_meta is not None:
+        if hasattr(event.platform_meta, "id"):
+            platform_id = event.platform_meta.id
+            if platform_id is not None:
+                return str(platform_id).lower()
+    
+    # 方式3：从 event.platform_adapter 获取（旧版本）
     if hasattr(event, "platform_adapter"):
         platform_type = event.platform_adapter
         if platform_type is not None:
-            # 如果是枚举值，获取其名称
             if hasattr(platform_type, "name"):
                 return platform_type.name.lower()
             return str(platform_type).lower()
     
-    # 方式2：从 event.platform_adapter_type 获取（旧版本）
+    # 方式4：从 event.platform_adapter_type 获取（旧版本）
     if hasattr(event, "platform_adapter_type"):
         platform_type = event.platform_adapter_type
         if platform_type is not None:
@@ -132,7 +145,7 @@ def _get_platform_type(event: "AstrMessageEvent") -> str:
                 return platform_type.name.lower()
             return str(platform_type).lower()
     
-    # 方式3：从 message_obj 获取
+    # 方式5：从 message_obj 获取
     if hasattr(event, "message_obj") and event.message_obj is not None:
         if hasattr(event.message_obj, "platform_adapter"):
             platform_type = event.message_obj.platform_adapter

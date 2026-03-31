@@ -10,7 +10,6 @@ LLM 请求钩子处理模块
 from typing import TYPE_CHECKING, List, cast
 
 from iris_memory.core import get_logger
-from iris_memory.platform import get_adapter
 
 if TYPE_CHECKING:
     from astrbot.api.event import AstrMessageEvent
@@ -61,6 +60,8 @@ async def _inject_l1_context(
         req: LLM 提供者请求对象
         component_manager: 组件管理器实例
     """
+    from iris_memory.platform import get_adapter
+    
     # 1. 获取 L1Buffer 组件
     buffer = component_manager.get_component("l1_buffer")
     if not buffer or not buffer.is_available:
@@ -112,8 +113,9 @@ async def _inject_user_profile(
         req: LLM 提供者请求对象
         component_manager: 组件管理器实例
     """
-    # 1. 检查是否启用自动注入
     from iris_memory.config import get_config
+    from iris_memory.platform import get_adapter
+    
     config = get_config()
     if not config.get("profile.enable"):
         return
@@ -189,6 +191,8 @@ async def _inject_l2_memory(
         L2 检索结果列表
     """
     from iris_memory.config import get_config
+    from iris_memory.platform import get_adapter
+    
     config = get_config()
     
     # 1. 检查是否启用 L2 记忆库
@@ -296,6 +300,8 @@ async def _inject_l3_knowledge_graph(
         l2_results: L2 检索结果（用于图增强和纯图谱检索）
     """
     from iris_memory.config import get_config
+    from iris_memory.platform import get_adapter
+    
     config = get_config()
     
     # 1. 检查是否启用 L3 知识图谱
@@ -486,8 +492,9 @@ async def _parse_images_if_related_mode(
         req: LLM 提供者请求对象
         component_manager: 组件管理器实例
     """
-    # 1. 检查是否启用图片解析
     from iris_memory.config import get_config
+    from iris_memory.platform import get_adapter
+    
     config = get_config()
     if not config.get("image_parsing.enable"):
         return

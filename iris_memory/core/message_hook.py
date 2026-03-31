@@ -9,7 +9,6 @@
 from typing import TYPE_CHECKING, cast
 
 from iris_memory.core import get_logger
-from iris_memory.platform import get_adapter
 
 if TYPE_CHECKING:
     from astrbot.api.event import AstrMessageEvent
@@ -49,6 +48,8 @@ async def _add_to_l1_buffer(
         event: AstrBot 消息事件对象
         component_manager: 组件管理器实例
     """
+    from iris_memory.platform import get_adapter
+    
     # 先检查消息内容，避免不必要的 adapter 调用
     content = event.message_str
     if not content:
@@ -89,8 +90,9 @@ async def _update_user_profile(
         event: AstrBot 消息事件对象
         component_manager: 组件管理器实例
     """
-    # 1. 检查是否启用画像系统
     from iris_memory.config import get_config
+    from iris_memory.platform import get_adapter
+    
     config = get_config()
     if not config.get("profile.enable"):
         return
@@ -144,6 +146,8 @@ async def update_l1_buffer(
         role: 消息角色（"user" 或 "assistant"）
         content: 消息内容
     """
+    from iris_memory.platform import get_adapter
+    
     buffer = component_manager.get_component("l1_buffer")
     if not buffer or not buffer.is_available:
         logger.debug("L1 Buffer 组件不可用，跳过消息更新")
@@ -179,8 +183,9 @@ async def _parse_images_if_enabled(
         event: AstrBot 消息事件对象
         component_manager: 组件管理器实例
     """
-    # 1. 检查是否启用图片解析
     from iris_memory.config import get_config
+    from iris_memory.platform import get_adapter
+    
     config = get_config()
     if not config.get("image_parsing.enable"):
         return
