@@ -5,8 +5,10 @@
 - 后台线程启动
 - 优雅关闭
 - 配置驱动
+- 端口占用检测
 """
 import asyncio
+import socket
 import threading
 from typing import Optional, cast
 from quart import Quart
@@ -118,6 +120,20 @@ class WebServer:
         protocol = "https" if ssl_cert and ssl_key else "http"
         logger.info(f"WebServer 初始化: {protocol}://{host}:{port}")
     
+    def _is_port_available(self) -> bool:
+        """检查端口是否可用
+        
+        Returns:
+            端口可用返回 True，否则返回 False
+        """
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(1)
+                result = sock.connect_ex((self.host, self.port))
+                return result != 0
+        except socket.error:
+            return True
+    
     def start(self) -> None:
         """启动服务器（后台线程）
         
@@ -128,14 +144,16 @@ class WebServer:
             logger.warning("WebServer 已在运行中")
             return
         
-        # 延迟导入避免循环依赖
+        if not self._is_port_available():
+            logger.error(f"端口 {self.port} 已被占用，Web 服务器启动失败")
+            logger.error(f"请检查是否有其他实例正在运行，或更改配置中的 web.port")
+            return
+        
         from . import create_app
         self.app = create_app(cors_origins=self.cors_origins)
         
-        # 创建关闭事件
         self._shutdown_event = asyncio.Event()
         
-        # 启动后台线程
         self._thread = threading.Thread(
             target=self._run_server,
             daemon=True,

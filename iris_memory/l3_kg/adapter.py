@@ -34,19 +34,17 @@ class L3KGAdapter(Component):
         """
         config = get_config()
         
-        # 检查是否启用
         if not config.get("l3_kg.enable"):
             logger.info("L3 知识图谱未启用")
             self._is_available = False
             return
         
-        # 初始化 KuzuDB
         self._persist_dir = config.data_dir / "kuzu"
         self._persist_dir.mkdir(parents=True, exist_ok=True)
         
         try:
-            # 创建数据库连接
-            self._db = kuzu.Database(str(self._persist_dir))
+            db_path = self._persist_dir / "graph.kuzu"
+            self._db = kuzu.Database(str(db_path))
             self._conn = kuzu.Connection(self._db)
             
             # 创建 schema
