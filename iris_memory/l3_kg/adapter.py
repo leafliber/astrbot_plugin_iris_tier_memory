@@ -61,7 +61,6 @@ class L3KGAdapter(Component):
         
         使用 MAP 类型存储动态属性，使用 DOUBLE 存储浮点数。
         """
-        # 创建节点表（动态类型通过 label 字段实现）
         self._conn.execute("""
             CREATE NODE TABLE IF NOT EXISTS Entity (
                 id STRING PRIMARY KEY,
@@ -74,11 +73,10 @@ class L3KGAdapter(Component):
                 created_time TIMESTAMP,
                 source_memory_id STRING,
                 group_id STRING,
-                properties MAP<STRING, STRING>
+                properties MAP(STRING, STRING)
             )
         """)
         
-        # 创建关系表（动态类型通过 relation_type 字段实现）
         self._conn.execute("""
             CREATE REL TABLE IF NOT EXISTS Related (
                 FROM Entity TO Entity,
@@ -89,7 +87,7 @@ class L3KGAdapter(Component):
                 last_access_time TIMESTAMP,
                 created_time TIMESTAMP,
                 source_memory_id STRING,
-                properties MAP<STRING, STRING>
+                properties MAP(STRING, STRING)
             )
         """)
         
