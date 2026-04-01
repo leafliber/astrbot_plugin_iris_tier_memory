@@ -161,6 +161,9 @@ class MergeTask:
     ) -> List[Tuple]:
         """找出相似记忆对
         
+        优化算法：对每条记忆只查询一次，获取最相似的记忆，
+        然后检查是否超过阈值。时间复杂度从 O(n²) 降到 O(n)。
+        
         Args:
             entries: 所有记忆条目
             adapter: L2 适配器
@@ -169,40 +172,46 @@ class MergeTask:
             相似记忆对列表 [(mem1, mem2), ...]
         """
         similar_pairs = []
+        checked_pairs = set()  # 避免重复添加
+        config = get_config()
+        enable_group_isolation = config.get("isolation_config.enable_group_memory_isolation")
         
-        # 遍历所有记忆对
-        for i in range(len(entries)):
-            for j in range(i + 1, len(entries)):
-                mem1 = entries[i]
-                mem2 = entries[j]
+        logger.info(f"开始查找相似记忆对，共 {len(entries)} 条记忆...")
+        
+        for i, mem1 in enumerate(entries):
+            try:
+                results = await adapter.retrieve(
+                    query=mem1.content,
+                    group_id=mem1.metadata.get("group_id") if enable_group_isolation else None,
+                    top_k=5
+                )
                 
-                # 跳过不同群聊的记忆（如果启用群聊隔离）
-                config = get_config()
-                if config.get("isolation_config.enable_group_memory_isolation"):
-                    if mem1.metadata.get("group_id") != mem2.metadata.get("group_id"):
+                for result in results:
+                    if result.entry.id == mem1.id:
                         continue
-                
-                # 检查相似度
-                # 注意：这里使用 ChromaDB 的检索功能来判断相似度
-                # 由于 ChromaDB 已经在存储时计算了向量，我们可以直接检索
-                try:
-                    results = await adapter.retrieve(
-                        query=mem1.content,
-                        group_id=mem1.metadata.get("group_id"),
-                        top_k=2  # 获取最相似的 2 条（包含自己）
-                    )
                     
-                    # 检查第二条结果是否是 mem2
-                    if len(results) >= 2:
-                        second_result = results[1]
-                        
-                        # 如果第二条是 mem2 且相似度足够高
-                        if (second_result.entry.id == mem2.id and
-                            second_result.score >= self._similarity_threshold):
-                            similar_pairs.append((mem1, mem2))
+                    if result.score < self._similarity_threshold:
+                        continue
+                    
+                    if enable_group_isolation:
+                        if result.entry.metadata.get("group_id") != mem1.metadata.get("group_id"):
+                            continue
+                    
+                    pair_key = tuple(sorted([mem1.id, result.entry.id]))
+                    if pair_key in checked_pairs:
+                        continue
+                    checked_pairs.add(pair_key)
+                    
+                    mem2 = next((e for e in entries if e.id == result.entry.id), None)
+                    if mem2:
+                        similar_pairs.append((mem1, mem2))
+                        logger.debug(f"发现相似记忆对：{mem1.id[:8]}... <-> {mem2.id[:8]}... (相似度: {result.score:.3f})")
                 
-                except Exception as e:
-                    logger.warning(f"检查记忆相似度失败：{e}")
+                if (i + 1) % 10 == 0:
+                    logger.info(f"已检查 {i + 1}/{len(entries)} 条记忆...")
+                    
+            except Exception as e:
+                logger.warning(f"检查记忆相似度失败：{e}")
         
         return similar_pairs
     
