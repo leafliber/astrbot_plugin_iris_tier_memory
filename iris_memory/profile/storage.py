@@ -103,16 +103,18 @@ class ProfileStorage(Component):
             logger.error(f"获取群聊画像失败: {key}, 错误: {e}")
             return None
     
-    async def save_group_profile(self, profile: GroupProfile) -> None:
+    async def save_group_profile(self, profile: GroupProfile, increment_version: bool = True) -> None:
         """保存群聊画像
         
         Args:
             profile: 群聊画像对象
+            increment_version: 是否增加版本号（默认 True）
         """
         if not self._is_available:
             return
         
-        profile.version += 1
+        if increment_version:
+            profile.version += 1
         
         persona_id = self._get_persona_id()
         key = f"group_profile:{persona_id}:{profile.group_id}"
@@ -164,18 +166,21 @@ class ProfileStorage(Component):
     async def save_user_profile(
         self, 
         profile: UserProfile,
-        group_id: str = "default"
+        group_id: str = "default",
+        increment_version: bool = True
     ) -> None:
         """保存用户画像
         
         Args:
             profile: 用户画像对象
             group_id: 群聊ID（全局模式传 "default"）
+            increment_version: 是否增加版本号（默认 True）
         """
         if not self._is_available:
             return
         
-        profile.version += 1
+        if increment_version:
+            profile.version += 1
         
         persona_id = self._get_persona_id()
         key = f"user_profile:{persona_id}:{group_id}:{profile.user_id}"

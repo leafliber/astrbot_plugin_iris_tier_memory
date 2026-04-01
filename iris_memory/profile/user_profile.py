@@ -105,17 +105,19 @@ class UserProfileManager:
         profile = await self.get_or_create(user_id, group_id)
         
         # 记录曾用名
+        name_changed = False
         if user_name and user_name != profile.user_name:
             if profile.user_name and profile.user_name not in profile.historical_names:
                 profile.historical_names.append(profile.user_name)
             profile.user_name = user_name
+            name_changed = True
             logger.debug(f"更新用户昵称: {user_id} -> {user_name}")
         
         # 更新最近互动时间
         profile.last_interaction_time = datetime.now()
         
-        # 保存画像
-        await self._storage.save_user_profile(profile, group_id)
+        # 保存画像（昵称变化时增加版本号）
+        await self._storage.save_user_profile(profile, group_id, increment_version=name_changed)
         logger.debug(f"更新用户画像简单字段: {user_id} (群聊: {group_id})")
     
     async def update_from_analysis(

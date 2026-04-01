@@ -96,6 +96,7 @@ class GroupProfileManager:
         profile = await self.get_or_create(group_id)
         
         # 更新简单字段
+        name_changed = False
         if current_topic is not None:
             profile.current_topic = current_topic
         
@@ -104,12 +105,13 @@ class GroupProfileManager:
         
         if group_name is not None:
             profile.group_name = group_name
+            name_changed = True
         
         # 更新最近互动时间
         profile.last_interaction_time = datetime.now()
         
-        # 保存画像
-        await self._storage.save_group_profile(profile)
+        # 保存画像（仅群名变化时增加版本号）
+        await self._storage.save_group_profile(profile, increment_version=name_changed)
         logger.debug(f"更新群聊画像简单字段: {group_id}")
     
     async def update_from_analysis(
