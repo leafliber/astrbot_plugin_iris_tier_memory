@@ -336,10 +336,11 @@ async def _inject_l3_knowledge_graph(
         # 4.1 从 L2 结果中提取节点 ID（用于两种模式）
         if l2_results:
             for result in l2_results:
-                node_id = result.metadata.get("memory_node_id") or \
-                          result.metadata.get("kg_node_id") or \
-                          result.metadata.get("node_id") or \
-                          result.metadata.get("entity_id")
+                metadata = result.entry.metadata if hasattr(result, 'entry') else result.metadata
+                node_id = metadata.get("memory_node_id") or \
+                          metadata.get("kg_node_id") or \
+                          metadata.get("node_id") or \
+                          metadata.get("entity_id")
                 if node_id:
                     memory_node_ids.append(node_id)
         
