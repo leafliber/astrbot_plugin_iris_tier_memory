@@ -98,11 +98,10 @@ class IrisTierMemoryPlugin(Star):
             self.web_server = create_web_server_from_config()
             if self.web_server:
                 self.web_server.start()
-                logger.info("✅ Web 管理界面已就绪")
         except Exception as e:
             logger.error(f"初始化 Web 服务器失败：{e}", exc_info=True)
         
-        logger.info("Iris Tier Memory 插件已加载")
+        logger.info("✅ Iris Tier Memory 插件已加载")
     
     def _register_llm_tools(self) -> None:
         """注册所有 LLM Tool 到 AstrBot"""

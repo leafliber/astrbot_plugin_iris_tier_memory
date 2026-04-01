@@ -116,9 +116,6 @@ class WebServer:
         self._shutdown_event: Optional[asyncio.Event] = None
         self._thread: Optional[threading.Thread] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
-        
-        protocol = "https" if ssl_cert and ssl_key else "http"
-        logger.info(f"WebServer 初始化: {protocol}://{host}:{port}")
     
     def _is_port_available(self) -> bool:
         """检查端口是否可用
@@ -163,8 +160,7 @@ class WebServer:
         
         protocol = "https" if self.ssl_cert and self.ssl_key else "http"
         display_host = "localhost" if self.host == "0.0.0.0" else self.host
-        logger.info(f"✅ Web 服务器已启动: {protocol}://{display_host}:{self.port}")
-        logger.info(f"   前端地址: {protocol}://{display_host}:{self.port}/iris")
+        logger.info(f"✅ Web 管理界面: {protocol}://{display_host}:{self.port}/iris")
     
     def shutdown(self) -> None:
         """优雅关闭服务器

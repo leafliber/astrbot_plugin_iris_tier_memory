@@ -95,7 +95,6 @@ def create_app(cors_origins: str = "*") -> Quart:
     # 注册所有路由
     register_routes(app)
     
-    logger.info(f"✅ 已创建独立 Quart 应用（CORS: {cors_origins}）")
     return app
 
 
@@ -130,8 +129,6 @@ def register_routes(app: Any) -> None:
     # 注册到主应用
     app.register_blueprint(api_bp, url_prefix='/api/iris')
     
-    logger.info("✅ Iris Memory API 已注册到 /api/iris")
-    
     # 2. 托管前端静态资源（SPA）
     frontend_dist = Path(__file__).parent / 'frontend' / 'dist'
     
@@ -154,8 +151,6 @@ def register_routes(app: Any) -> None:
             else:
                 # 对于前端路由路径，返回 index.html
                 return await send_from_directory(str(frontend_dist), 'index.html')
-        
-        logger.info("✅ Iris Memory Web 前端已挂载到 /iris")
     else:
         logger.warning(
             f"⚠️ 前端构建产物不存在：{frontend_dist}\n"
