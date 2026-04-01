@@ -106,6 +106,9 @@ class L3KGAdapter(Component):
             return False
         
         try:
+            prop_keys = list(node.properties.keys())
+            prop_values = list(node.properties.values())
+            
             query = """
                 MERGE (e:Entity {id: $id})
                 SET e.label = $label,
@@ -117,7 +120,7 @@ class L3KGAdapter(Component):
                     e.created_time = $created_time,
                     e.source_memory_id = $source_memory_id,
                     e.group_id = $group_id,
-                    e.properties = CAST($properties AS MAP(STRING, STRING))
+                    e.properties = map($prop_keys, $prop_values)
             """
             self._conn.execute(query, {
                 "id": node.id,
@@ -130,7 +133,8 @@ class L3KGAdapter(Component):
                 "created_time": node.created_time,
                 "source_memory_id": node.source_memory_id,
                 "group_id": node.group_id,
-                "properties": node.properties  # MAP 类型，直接传递 dict
+                "prop_keys": prop_keys,
+                "prop_values": prop_values
             })
             logger.debug(f"节点添加成功：{node.id}")
             return True
@@ -151,6 +155,9 @@ class L3KGAdapter(Component):
             return False
         
         try:
+            prop_keys = list(edge.properties.keys())
+            prop_values = list(edge.properties.values())
+            
             query = """
                 MATCH (src:Entity {id: $source_id})
                 MATCH (tgt:Entity {id: $target_id})
@@ -161,7 +168,7 @@ class L3KGAdapter(Component):
                     r.last_access_time = $last_access_time,
                     r.created_time = $created_time,
                     r.source_memory_id = $source_memory_id,
-                    r.properties = CAST($properties AS MAP(STRING, STRING))
+                    r.properties = map($prop_keys, $prop_values)
             """
             self._conn.execute(query, {
                 "source_id": edge.source_id,
@@ -173,7 +180,8 @@ class L3KGAdapter(Component):
                 "last_access_time": edge.last_access_time or datetime.now(),
                 "created_time": edge.created_time,
                 "source_memory_id": edge.source_memory_id,
-                "properties": edge.properties  # MAP 类型，直接传递 dict
+                "prop_keys": prop_keys,
+                "prop_values": prop_values
             })
             logger.debug(f"边添加成功：{edge.generate_id()}")
             return True
