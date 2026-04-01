@@ -11,6 +11,29 @@ from datetime import datetime
 logger = get_logger("l3_kg")
 
 
+def _build_map_literal(properties: dict) -> str:
+    """构建 MAP 字面量字符串
+    
+    Args:
+        properties: 属性字典
+        
+    Returns:
+        MAP 字面量字符串，如 map(['key1', 'key2'], ['val1', 'val2'])
+    """
+    if not properties:
+        return "map([], [])"
+    
+    keys = []
+    values = []
+    for k, v in properties.items():
+        escaped_key = str(k).replace("\\", "\\\\").replace("'", "\\'")
+        escaped_val = str(v).replace("\\", "\\\\").replace("'", "\\'")
+        keys.append(f"'{escaped_key}'")
+        values.append(f"'{escaped_val}'")
+    
+    return f"map([{', '.join(keys)}], [{', '.join(values)}])"
+
+
 class L3KGAdapter(Component):
     """KuzuDB 图谱适配器
     
@@ -106,37 +129,21 @@ class L3KGAdapter(Component):
             return False
         
         try:
-            prop_keys = list(node.properties.keys())
-            prop_values = [str(v) for v in node.properties.values()]
+            map_literal = _build_map_literal(node.properties)
             
-            # 处理空 properties 的情况
-            if prop_keys:
-                query = """
-                    MERGE (e:Entity {id: $id})
-                    SET e.label = $label,
-                        e.name = $name,
-                        e.content = $content,
-                        e.confidence = $confidence,
-                        e.access_count = $access_count,
-                        e.last_access_time = $last_access_time,
-                        e.created_time = $created_time,
-                        e.source_memory_id = $source_memory_id,
-                        e.group_id = $group_id,
-                        e.properties = map($prop_keys, $prop_values)
-                """
-            else:
-                query = """
-                    MERGE (e:Entity {id: $id})
-                    SET e.label = $label,
-                        e.name = $name,
-                        e.content = $content,
-                        e.confidence = $confidence,
-                        e.access_count = $access_count,
-                        e.last_access_time = $last_access_time,
-                        e.created_time = $created_time,
-                        e.source_memory_id = $source_memory_id,
-                        e.group_id = $group_id
-                """
+            query = f"""
+                MERGE (e:Entity {{id: $id}})
+                SET e.label = $label,
+                    e.name = $name,
+                    e.content = $content,
+                    e.confidence = $confidence,
+                    e.access_count = $access_count,
+                    e.last_access_time = $last_access_time,
+                    e.created_time = $created_time,
+                    e.source_memory_id = $source_memory_id,
+                    e.group_id = $group_id,
+                    e.properties = {map_literal}
+            """
             self._conn.execute(query, {
                 "id": node.id,
                 "label": node.label,
@@ -148,8 +155,6 @@ class L3KGAdapter(Component):
                 "created_time": node.created_time,
                 "source_memory_id": node.source_memory_id,
                 "group_id": node.group_id,
-                "prop_keys": prop_keys,
-                "prop_values": prop_values
             })
             logger.debug(f"节点添加成功：{node.id}")
             return True
@@ -170,35 +175,20 @@ class L3KGAdapter(Component):
             return False
         
         try:
-            prop_keys = list(edge.properties.keys())
-            prop_values = [str(v) for v in edge.properties.values()]
+            map_literal = _build_map_literal(edge.properties)
             
-            # 处理空 properties 的情况
-            if prop_keys:
-                query = """
-                    MATCH (src:Entity {id: $source_id})
-                    MATCH (tgt:Entity {id: $target_id})
-                    MERGE (src)-[r:Related {relation_type: $relation_type}]->(tgt)
-                    SET r.weight = $weight,
-                        r.confidence = $confidence,
-                        r.access_count = $access_count,
-                        r.last_access_time = $last_access_time,
-                        r.created_time = $created_time,
-                        r.source_memory_id = $source_memory_id,
-                        r.properties = map($prop_keys, $prop_values)
-                """
-            else:
-                query = """
-                    MATCH (src:Entity {id: $source_id})
-                    MATCH (tgt:Entity {id: $target_id})
-                    MERGE (src)-[r:Related {relation_type: $relation_type}]->(tgt)
-                    SET r.weight = $weight,
-                        r.confidence = $confidence,
-                        r.access_count = $access_count,
-                        r.last_access_time = $last_access_time,
-                        r.created_time = $created_time,
-                        r.source_memory_id = $source_memory_id
-                """
+            query = f"""
+                MATCH (src:Entity {{id: $source_id}})
+                MATCH (tgt:Entity {{id: $target_id}})
+                MERGE (src)-[r:Related {{relation_type: $relation_type}}]->(tgt)
+                SET r.weight = $weight,
+                    r.confidence = $confidence,
+                    r.access_count = $access_count,
+                    r.last_access_time = $last_access_time,
+                    r.created_time = $created_time,
+                    r.source_memory_id = $source_memory_id,
+                    r.properties = {map_literal}
+            """
             self._conn.execute(query, {
                 "source_id": edge.source_id,
                 "target_id": edge.target_id,
@@ -209,8 +199,6 @@ class L3KGAdapter(Component):
                 "last_access_time": edge.last_access_time or datetime.now(),
                 "created_time": edge.created_time,
                 "source_memory_id": edge.source_memory_id,
-                "prop_keys": prop_keys,
-                "prop_values": prop_values
             })
             logger.debug(f"边添加成功：{edge.generate_id()}")
             return True
