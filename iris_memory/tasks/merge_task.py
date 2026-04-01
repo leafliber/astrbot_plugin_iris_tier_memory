@@ -54,21 +54,15 @@ class MergeTask:
         
         检索相似记忆并合并。
         """
-        logger.info("开始执行记忆合并任务...")
-        
         config = get_config()
         self._similarity_threshold = config.get("merge_similarity_threshold")
         self._batch_size = config.get("merge_batch_size")
         
-        # 检查是否启用
         if not config.get("scheduled_tasks.enable_merging"):
-            logger.info("记忆合并任务未启用，跳过")
+            logger.debug("记忆合并任务未启用，跳过")
             return
         
-        # 执行合并
         await self._merge_similar_memories()
-        
-        logger.info("记忆合并任务执行完成")
     
     # =========================================================================
     # 记忆合并

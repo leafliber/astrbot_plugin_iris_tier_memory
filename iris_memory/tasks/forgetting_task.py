@@ -52,23 +52,15 @@ class ForgettingTask:
         
         依次执行 L2 和 L3 的遗忘清洗。
         """
-        logger.info("开始执行遗忘清洗任务...")
-        
         config = get_config()
         self._batch_size = config.get("eviction_batch_size")
         
-        # 检查是否启用
         if not config.get("scheduled_tasks.enable_forgetting"):
-            logger.info("遗忘清洗任务未启用，跳过")
+            logger.debug("遗忘清洗任务未启用，跳过")
             return
         
-        # L2 遗忘清洗
         await self._evict_l2_memories()
-        
-        # L3 图谱淘汰
         await self._evict_l3_nodes()
-        
-        logger.info("遗忘清洗任务执行完成")
     
     # =========================================================================
     # L2 遗忘清洗

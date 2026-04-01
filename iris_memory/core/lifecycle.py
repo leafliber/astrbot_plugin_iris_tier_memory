@@ -154,26 +154,16 @@ async def initialize_components(
         return False
     
     try:
-        logger.info("开始异步初始化组件...")
-        
-        # 初始化所有组件
         results = await component_manager.initialize_all()
         
-        # 统计初始化结果
-        success_count = sum(1 for r in results if r.success)
-        logger.info(f"组件初始化完成：{success_count}/{len(results)} 成功")
-        
-        # 注入 ComponentManager 引用到需要的组件
         _inject_component_manager(component_manager)
         
-        # 启动定时任务
         await _start_scheduled_tasks(component_manager)
         
         return True
         
     except Exception as e:
         logger.error(f"组件初始化失败：{e}", exc_info=True)
-        # 即使失败也返回 True，避免重复尝试
         return True
 
 
@@ -217,29 +207,23 @@ async def _start_scheduled_tasks(component_manager: ComponentManager) -> None:
     
     config = get_config()
     
-    # 注册遗忘清洗任务
     if config.get("scheduled_tasks.enable_forgetting"):
         forgetting_task = ForgettingTask(component_manager)
         interval_hours = config.get("forgetting_task_interval_hours")
-        
         scheduler.register_periodic_task(
             task_name="forgetting",
             coro_func=forgetting_task.execute,
             interval_hours=interval_hours
         )
-        logger.info(f"已注册遗忘清洗任务，间隔 {interval_hours} 小时")
     
-    # 注册合并任务
     if config.get("scheduled_tasks.enable_merging"):
         merge_task = MergeTask(component_manager)
         interval_hours = config.get("merge_task_interval_hours")
-        
         scheduler.register_periodic_task(
             task_name="merging",
             coro_func=merge_task.execute,
             interval_hours=interval_hours
         )
-        logger.info(f"已注册记忆合并任务，间隔 {interval_hours} 小时")
 
 
 async def shutdown_components(
