@@ -7,6 +7,7 @@ Iris Tier Memory - L1 消息缓冲组件
 
 from typing import Optional, Dict, Any
 from datetime import datetime
+import asyncio
 
 from iris_memory.core import Component, get_logger
 from iris_memory.config import get_config
@@ -58,6 +59,7 @@ class L1Buffer(Component):
         self._summarizer: Optional[Summarizer] = None
         self._component_manager: Optional["ComponentManager"] = None
         self._provider: str = ""
+        self._summarizing_locks: Dict[str, asyncio.Lock] = {}
         logger.debug("L1Buffer 实例已创建")
     
     @property
@@ -322,6 +324,7 @@ class L1Buffer(Component):
         """检查并触发总结
         
         检查队列是否超过限制，触发自动总结。
+        使用锁防止并发触发重复总结。
         
         阶段 2-4：总结功能不可用，仅清空队列
         阶段 5：调用 LLM 生成总结并写入 L2
@@ -329,61 +332,59 @@ class L1Buffer(Component):
         Args:
             group_id: 群聊ID
         """
-        # 延迟获取 Summarizer
-        summarizer = self._get_or_create_summarizer()
-        
-        if not summarizer:
-            logger.debug("Summarizer 不可用，跳过总结检查")
-            return
-        
         queue_key = self._get_queue_key(group_id)
         
-        if queue_key not in self._queues:
+        if queue_key not in self._summarizing_locks:
+            self._summarizing_locks[queue_key] = asyncio.Lock()
+        
+        if self._summarizing_locks[queue_key].locked():
+            logger.debug(f"群聊 {queue_key} 正在总结中，跳过重复触发")
             return
         
-        queue = self._queues[queue_key]
-        
-        # 检查是否需要总结
-        if not summarizer.should_summarize(queue):
-            return
-        
-        try:
-            logger.info(f"开始总结队列：{queue_key}")
+        async with self._summarizing_locks[queue_key]:
+            summarizer = self._get_or_create_summarizer()
             
-            # 调用总结器
-            summary = await summarizer.summarize(queue)
+            if not summarizer:
+                logger.debug("Summarizer 不可用，跳过总结检查")
+                return
             
-            if summary:
-                logger.info(f"总结完成：{queue_key}, 长度：{len(summary)}")
+            if queue_key not in self._queues:
+                return
+            
+            queue = self._queues[queue_key]
+            
+            if not summarizer.should_summarize(queue):
+                return
+            
+            try:
+                logger.info(f"开始总结队列：{queue_key}")
                 
-                # 提取活跃用户列表
-                active_users = list(set(msg.source for msg in queue.messages if msg.role == "user"))
+                summary = await summarizer.summarize(queue)
                 
-                # 阶段 3：将总结写入 L2 记忆库
-                memory_id = await self._write_summary_to_l2(group_id, queue, summary)
+                if summary:
+                    logger.info(f"总结完成：{queue_key}, 长度：{len(summary)}")
+                    
+                    active_users = list(set(msg.source for msg in queue.messages if msg.role == "user"))
+                    
+                    memory_id = await self._write_summary_to_l2(group_id, queue, summary)
+                    
+                    await self._extract_and_store_to_kg(group_id, summary, memory_id, active_users)
+                    
+                    await self._update_profile_after_summary(group_id, queue, summary)
+                else:
+                    logger.warning(
+                        f"总结返回空，队列 {queue_key} 将被清空"
+                    )
                 
-                # 阶段 4：从总结中提取实体和关系，存储到知识图谱
-                await self._extract_and_store_to_kg(group_id, summary, memory_id, active_users)
-                
-                # 阶段 9：更新群聊画像（总结后更新）
-                await self._update_profile_after_summary(group_id, queue, summary)
-            else:
-                # 总结返回空
-                logger.warning(
-                    f"总结返回空，队列 {queue_key} 将被清空"
+                queue.clear()
+                logger.info(f"队列已清空：{queue_key}")
+            
+            except Exception as e:
+                logger.error(
+                    f"总结队列 {queue_key} 失败：{e}，将清空队列",
+                    exc_info=True
                 )
-            
-            # 清空队列
-            queue.clear()
-            logger.info(f"队列已清空：{queue_key}")
-        
-        except Exception as e:
-            logger.error(
-                f"总结队列 {queue_key} 失败：{e}，将清空队列",
-                exc_info=True
-            )
-            # 即使失败也清空队列，避免重复触发
-            queue.clear()
+                queue.clear()
     
     async def _update_profile_after_summary(
         self,
