@@ -29,8 +29,9 @@ class TestL1LLMIntegration:
         mock_response = MagicMock()
         mock_response.completion_text = "这是一个总结内容"
         mock_response.usage = MagicMock()
-        mock_response.usage.prompt_tokens = 150
-        mock_response.usage.completion_tokens = 30
+        mock_response.usage.input_other = 120
+        mock_response.usage.input_cached = 30
+        mock_response.usage.output_tokens = 30
         context.llm_generate = MagicMock(return_value=mock_response)
         
         # Mock KV storage

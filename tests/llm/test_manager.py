@@ -22,8 +22,9 @@ class TestLLMManager:
         mock_response = MagicMock()
         mock_response.completion_text = "Test response"
         mock_response.usage = MagicMock()
-        mock_response.usage.prompt_tokens = 100
-        mock_response.usage.completion_tokens = 50
+        mock_response.usage.input_other = 80
+        mock_response.usage.input_cached = 20
+        mock_response.usage.output_tokens = 50
         context.llm_generate = AsyncMock(return_value=mock_response)
         
         # Mock KV storage

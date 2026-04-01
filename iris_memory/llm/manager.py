@@ -134,8 +134,12 @@ class LLMManager(Component):
             
             duration_ms = int((time.time() - start_time) * 1000)
             
-            input_tokens = llm_resp.usage.prompt_tokens if llm_resp.usage else 0
-            output_tokens = llm_resp.usage.completion_tokens if llm_resp.usage else 0
+            if llm_resp.usage:
+                input_tokens = (llm_resp.usage.input_other or 0) + (llm_resp.usage.input_cached or 0)
+                output_tokens = llm_resp.usage.output_tokens or 0
+            else:
+                input_tokens = 0
+                output_tokens = 0
             
             if self._token_stats:
                 await self._token_stats.record_usage(

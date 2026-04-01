@@ -31,8 +31,9 @@ class TestMessageToSummaryFlow:
         mock_response = MagicMock()
         mock_response.completion_text = "这是一段对话总结：用户询问了关于项目的问题，助手提供了相关建议。"
         mock_response.usage = MagicMock()
-        mock_response.usage.prompt_tokens = 200
-        mock_response.usage.completion_tokens = 40
+        mock_response.usage.input_other = 160
+        mock_response.usage.input_cached = 40
+        mock_response.usage.output_tokens = 40
         context.llm_generate = MagicMock(return_value=mock_response)
         
         # Mock KV storage
