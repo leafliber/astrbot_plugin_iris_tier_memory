@@ -107,21 +107,37 @@ class L3KGAdapter(Component):
         
         try:
             prop_keys = list(node.properties.keys())
-            prop_values = list(node.properties.values())
+            prop_values = [str(v) for v in node.properties.values()]
             
-            query = """
-                MERGE (e:Entity {id: $id})
-                SET e.label = $label,
-                    e.name = $name,
-                    e.content = $content,
-                    e.confidence = $confidence,
-                    e.access_count = $access_count,
-                    e.last_access_time = $last_access_time,
-                    e.created_time = $created_time,
-                    e.source_memory_id = $source_memory_id,
-                    e.group_id = $group_id,
-                    e.properties = map($prop_keys, $prop_values)
-            """
+            # 处理空 properties 的情况
+            if prop_keys:
+                query = """
+                    MERGE (e:Entity {id: $id})
+                    SET e.label = $label,
+                        e.name = $name,
+                        e.content = $content,
+                        e.confidence = $confidence,
+                        e.access_count = $access_count,
+                        e.last_access_time = $last_access_time,
+                        e.created_time = $created_time,
+                        e.source_memory_id = $source_memory_id,
+                        e.group_id = $group_id,
+                        e.properties = map($prop_keys, $prop_values)
+                """
+            else:
+                query = """
+                    MERGE (e:Entity {id: $id})
+                    SET e.label = $label,
+                        e.name = $name,
+                        e.content = $content,
+                        e.confidence = $confidence,
+                        e.access_count = $access_count,
+                        e.last_access_time = $last_access_time,
+                        e.created_time = $created_time,
+                        e.source_memory_id = $source_memory_id,
+                        e.group_id = $group_id,
+                        e.properties = {}
+                """
             self._conn.execute(query, {
                 "id": node.id,
                 "label": node.label,
@@ -156,20 +172,35 @@ class L3KGAdapter(Component):
         
         try:
             prop_keys = list(edge.properties.keys())
-            prop_values = list(edge.properties.values())
+            prop_values = [str(v) for v in edge.properties.values()]
             
-            query = """
-                MATCH (src:Entity {id: $source_id})
-                MATCH (tgt:Entity {id: $target_id})
-                MERGE (src)-[r:Related {relation_type: $relation_type}]->(tgt)
-                SET r.weight = $weight,
-                    r.confidence = $confidence,
-                    r.access_count = $access_count,
-                    r.last_access_time = $last_access_time,
-                    r.created_time = $created_time,
-                    r.source_memory_id = $source_memory_id,
-                    r.properties = map($prop_keys, $prop_values)
-            """
+            # 处理空 properties 的情况
+            if prop_keys:
+                query = """
+                    MATCH (src:Entity {id: $source_id})
+                    MATCH (tgt:Entity {id: $target_id})
+                    MERGE (src)-[r:Related {relation_type: $relation_type}]->(tgt)
+                    SET r.weight = $weight,
+                        r.confidence = $confidence,
+                        r.access_count = $access_count,
+                        r.last_access_time = $last_access_time,
+                        r.created_time = $created_time,
+                        r.source_memory_id = $source_memory_id,
+                        r.properties = map($prop_keys, $prop_values)
+                """
+            else:
+                query = """
+                    MATCH (src:Entity {id: $source_id})
+                    MATCH (tgt:Entity {id: $target_id})
+                    MERGE (src)-[r:Related {relation_type: $relation_type}]->(tgt)
+                    SET r.weight = $weight,
+                        r.confidence = $confidence,
+                        r.access_count = $access_count,
+                        r.last_access_time = $last_access_time,
+                        r.created_time = $created_time,
+                        r.source_memory_id = $source_memory_id,
+                        r.properties = {}
+                """
             self._conn.execute(query, {
                 "source_id": edge.source_id,
                 "target_id": edge.target_id,
