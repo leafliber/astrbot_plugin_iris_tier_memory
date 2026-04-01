@@ -31,7 +31,7 @@ class TestL1LLMIntegration:
         mock_response.usage = MagicMock()
         mock_response.usage.input_other = 120
         mock_response.usage.input_cached = 30
-        mock_response.usage.output_tokens = 30
+        mock_response.usage.output = 30
         context.llm_generate = MagicMock(return_value=mock_response)
         
         # Mock KV storage

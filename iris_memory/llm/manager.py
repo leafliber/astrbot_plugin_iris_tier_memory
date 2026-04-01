@@ -135,8 +135,8 @@ class LLMManager(Component):
             duration_ms = int((time.time() - start_time) * 1000)
             
             if llm_resp.usage:
-                input_tokens = (llm_resp.usage.input_other or 0) + (llm_resp.usage.input_cached or 0)
-                output_tokens = llm_resp.usage.output_tokens or 0
+                input_tokens = llm_resp.usage.input_other + llm_resp.usage.input_cached
+                output_tokens = llm_resp.usage.output
             else:
                 input_tokens = 0
                 output_tokens = 0

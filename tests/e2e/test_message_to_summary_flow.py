@@ -33,7 +33,7 @@ class TestMessageToSummaryFlow:
         mock_response.usage = MagicMock()
         mock_response.usage.input_other = 160
         mock_response.usage.input_cached = 40
-        mock_response.usage.output_tokens = 40
+        mock_response.usage.output = 40
         context.llm_generate = MagicMock(return_value=mock_response)
         
         # Mock KV storage
