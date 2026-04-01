@@ -135,8 +135,7 @@ class L3KGAdapter(Component):
                         e.last_access_time = $last_access_time,
                         e.created_time = $created_time,
                         e.source_memory_id = $source_memory_id,
-                        e.group_id = $group_id,
-                        e.properties = {}
+                        e.group_id = $group_id
                 """
             self._conn.execute(query, {
                 "id": node.id,
@@ -198,8 +197,7 @@ class L3KGAdapter(Component):
                         r.access_count = $access_count,
                         r.last_access_time = $last_access_time,
                         r.created_time = $created_time,
-                        r.source_memory_id = $source_memory_id,
-                        r.properties = {}
+                        r.source_memory_id = $source_memory_id
                 """
             self._conn.execute(query, {
                 "source_id": edge.source_id,
