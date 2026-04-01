@@ -329,9 +329,11 @@ class GraphEnhancer:
                         logger.debug(f"用户关联节点：{row[1]} ({row[2]})")
             
             # 策略3：properties.active_users 包含该用户ID（兼容旧数据）
+            # KuzuDB MAP 类型需要使用 map_keys() 和下标访问
             query3 = """
                 MATCH (e:Entity)
-                WHERE e.properties.active_users CONTAINS $user_id
+                WHERE list_contains(map_keys(e.properties), 'active_users')
+                AND e.properties['active_users'] CONTAINS $user_id
                 AND ($group_id IS NULL OR e.group_id = $group_id)
                 RETURN e.id, e.name, e.label
                 LIMIT 5

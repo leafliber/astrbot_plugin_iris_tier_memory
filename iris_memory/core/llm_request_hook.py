@@ -336,7 +336,7 @@ async def _inject_l3_knowledge_graph(
         # 4.1 从 L2 结果中提取节点 ID（用于两种模式）
         if l2_results:
             for result in l2_results:
-                metadata = result.entry.metadata if hasattr(result, 'entry') else result.metadata
+                metadata = result.entry.metadata
                 node_id = metadata.get("memory_node_id") or \
                           metadata.get("kg_node_id") or \
                           metadata.get("node_id") or \

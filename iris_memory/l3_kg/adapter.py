@@ -228,9 +228,9 @@ class L3KGAdapter(Component):
             return [], []
         
         try:
-            # 构建路径查询
+            # KuzuDB 变长路径语法：[:Related*min..max]
             query = """
-                MATCH path = (start:Entity)-[r:Related*1..%d]-(end:Entity)
+                MATCH path = (start:Entity)-[:Related*1..%d]-(end:Entity)
                 WHERE start.id IN $node_ids
                 AND ($group_id IS NULL OR start.group_id = $group_id)
                 RETURN 
