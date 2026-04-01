@@ -357,31 +357,56 @@ class L1Buffer(Component):
                 return
             
             try:
-                logger.info(f"开始总结队列：{queue_key}")
+                config = get_config()
+                retain_count = config.get("l1_buffer.retain_message_count")
+                max_queue_tokens = config.get("l1_buffer.max_queue_tokens")
                 
-                summary = await summarizer.summarize(queue)
+                to_summarize, to_retain = queue.split_for_summary(
+                    retain_count=retain_count,
+                    max_retain_tokens=max_queue_tokens
+                )
+                
+                if not to_summarize:
+                    logger.debug(f"队列 {queue_key} 无需总结的消息")
+                    return
+                
+                logger.info(
+                    f"开始总结队列：{queue_key}，"
+                    f"待总结 {len(to_summarize)} 条，保留 {len(to_retain)} 条"
+                )
+                
+                summary = await summarizer.summarize(to_summarize)
                 
                 if summary:
                     logger.info(f"总结完成：{queue_key}, 长度：{len(summary)}")
                     
-                    active_users = list(set(msg.source for msg in queue.messages if msg.role == "user"))
-                    
-                    memory_id = await self._write_summary_to_l2(group_id, queue, summary)
-                    
-                    await self._extract_and_store_to_kg(group_id, summary, memory_id, active_users)
-                    
-                    await self._update_profile_after_summary(group_id, queue, summary)
-                else:
-                    logger.warning(
-                        f"总结返回空，队列 {queue_key} 将被清空"
+                    active_users = list(
+                        set(msg.source for msg in to_summarize if msg.role == "user")
                     )
+                    
+                    memory_id = await self._write_summary_to_l2(
+                        group_id, to_summarize, summary
+                    )
+                    
+                    await self._extract_and_store_to_kg(
+                        group_id, summary, memory_id, active_users
+                    )
+                    
+                    await self._update_profile_after_summary(
+                        group_id, to_summarize, summary
+                    )
+                else:
+                    logger.warning(f"总结返回空，队列 {queue_key}")
                 
-                queue.clear()
-                logger.info(f"队列已清空：{queue_key}")
+                queue.remove_messages(to_summarize)
+                logger.info(
+                    f"队列已更新：{queue_key}，剩余 {len(queue)} 条消息，"
+                    f"{queue.total_tokens} tokens"
+                )
             
             except Exception as e:
                 logger.error(
-                    f"总结队列 {queue_key} 失败：{e}，将清空队列",
+                    f"总结队列 {queue_key} 失败：{e}",
                     exc_info=True
                 )
                 queue.clear()
@@ -389,7 +414,7 @@ class L1Buffer(Component):
     async def _update_profile_after_summary(
         self,
         group_id: str,
-        queue: MessageQueue,
+        messages: list[ContextMessage],
         summary: str
     ) -> None:
         """总结后更新画像（内部函数）
@@ -398,15 +423,13 @@ class L1Buffer(Component):
         
         Args:
             group_id: 群聊ID
-            queue: 消息队列
+            messages: 被总结的消息列表
             summary: 总结文本
         """
-        # 检查画像系统是否启用
         config = get_config()
         if not config.get("profile.enable"):
             return
         
-        # 获取 ProfileStorage 组件
         if not self._component_manager:
             return
         
@@ -417,16 +440,14 @@ class L1Buffer(Component):
         try:
             from iris_memory.profile import GroupProfileManager
             
-            # 获取群聊画像管理器
             group_manager = GroupProfileManager(profile_storage)
             
-            # 提取活跃用户列表（从 queue 中）
-            active_users = list(set(msg.source for msg in queue.messages if msg.role == "user"))
+            active_users = list(
+                set(msg.source for msg in messages if msg.role == "user")
+            )
             
-            # 提取当前话题（使用总结的前 100 字符）
             current_topic = summary[:100] if len(summary) > 100 else summary
             
-            # 更新群聊画像简单字段
             await group_manager.update_simple_fields(
                 group_id=group_id,
                 current_topic=current_topic,
@@ -441,26 +462,24 @@ class L1Buffer(Component):
     async def _write_summary_to_l2(
         self,
         group_id: str,
-        queue: MessageQueue,
+        messages: list[ContextMessage],
         summary: str
     ) -> Optional[str]:
         """将总结写入 L2 记忆库
         
         Args:
             group_id: 群聊ID
-            queue: 消息队列
+            messages: 被总结的消息列表
             summary: 总结文本
         
         Returns:
             记忆 ID，失败时返回 None
         """
-        # 检查 L2 记忆库是否启用
         config = get_config()
         if not config.get("l2_memory.enable"):
             logger.debug("L2 记忆库未启用，跳过写入")
             return None
         
-        # 获取 L2MemoryAdapter 组件
         if not self._component_manager:
             return None
         
@@ -472,19 +491,18 @@ class L1Buffer(Component):
         try:
             from iris_memory.l2_memory import MemoryRetriever
             
-            # 创建记忆检索器
             retriever = MemoryRetriever(self._component_manager)
             
-            # 构建元数据
             metadata = {
                 "group_id": group_id,
                 "source": "l1_summary",
                 "timestamp": datetime.now().isoformat(),
-                "confidence": 0.8,  # L1 总结的默认置信度
+                "confidence": 0.8,
             }
             
-            # 提取活跃用户列表（从 queue 中）
-            active_users = list(set(msg.source for msg in queue.messages if msg.role == "user"))
+            active_users = list(
+                set(msg.source for msg in messages if msg.role == "user")
+            )
             if active_users:
                 metadata["active_users"] = ",".join(active_users)
             

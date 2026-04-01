@@ -18,9 +18,15 @@
       },
       "inject_queue_length": {
         "type": "int",
-        "default": 20,
+        "default": 30,
         "description": "注入上下文的最大消息条数",
         "hint": "超过此数量将触发自动总结"
+      },
+      "retain_message_count": {
+        "type": "int",
+        "default": 10,
+        "description": "总结时保留的消息数",
+        "hint": "触发总结后保留最新的n条消息，只总结被抛弃的旧消息，必须小于最大消息数"
       },
       "max_queue_tokens": {
         "type": "int",

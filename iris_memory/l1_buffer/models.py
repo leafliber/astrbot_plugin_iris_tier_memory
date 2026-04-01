@@ -205,3 +205,69 @@ class MessageQueue:
             {"role": msg.role, "content": msg.content}
             for msg in self.messages
         ]
+    
+    def split_for_summary(
+        self, 
+        retain_count: int,
+        max_retain_tokens: Optional[int] = None
+    ) -> tuple[list[ContextMessage], list[ContextMessage]]:
+        """分割队列为待总结消息和保留消息
+        
+        保留最新的 retain_count 条消息，返回需要总结的旧消息。
+        同时考虑 max_retain_tokens 限制，避免保留消息过长。
+        
+        Args:
+            retain_count: 保留的消息数量
+            max_retain_tokens: 保留消息的最大 Token 数（可选）
+        
+        Returns:
+            (待总结的消息列表, 保留的消息列表)
+        
+        Examples:
+            >>> queue = MessageQueue(group_id="test")
+            >>> # 添加 20 条消息
+            >>> for i in range(20):
+            ...     queue.add_message(ContextMessage(...))
+            >>> to_summarize, to_retain = queue.split_for_summary(retain_count=10)
+            >>> len(to_summarize)
+            10
+            >>> len(to_retain)
+            10
+        """
+        if len(self.messages) <= retain_count:
+            return [], list(self.messages)
+        
+        messages_list = list(self.messages)
+        to_retain = messages_list[-retain_count:]
+        to_summarize = messages_list[:-retain_count]
+        
+        if max_retain_tokens is not None:
+            retain_tokens = sum(msg.token_count for msg in to_retain)
+            if retain_tokens > max_retain_tokens:
+                while len(to_retain) > 1 and retain_tokens > max_retain_tokens:
+                    moved_msg = to_retain.pop(0)
+                    to_summarize.append(moved_msg)
+                    retain_tokens -= moved_msg.token_count
+        
+        return to_summarize, to_retain
+    
+    def remove_messages(self, messages: list[ContextMessage]) -> None:
+        """从队列中移除指定消息
+        
+        移除消息并更新 Token 计数。
+        
+        Args:
+            messages: 要移除的消息列表
+        """
+        message_set = set(id(m) for m in messages)
+        new_messages = deque()
+        removed_tokens = 0
+        
+        for msg in self.messages:
+            if id(msg) in message_set:
+                removed_tokens += msg.token_count
+            else:
+                new_messages.append(msg)
+        
+        self.messages = new_messages
+        self.total_tokens -= removed_tokens

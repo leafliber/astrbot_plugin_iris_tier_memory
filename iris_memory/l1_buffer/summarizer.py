@@ -89,13 +89,16 @@ class Summarizer:
         
         return False
     
-    async def summarize(self, queue: MessageQueue) -> Optional[str]:
-        """总结队列消息
+    async def summarize(
+        self, 
+        messages: list[ContextMessage]
+    ) -> Optional[str]:
+        """总结消息列表
         
-        调用 LLM 生成消息队列的总结。
+        调用 LLM 生成消息的总结。
         
         Args:
-            queue: 消息队列
+            messages: 待总结的消息列表
         
         Returns:
             总结文本
@@ -103,18 +106,20 @@ class Summarizer:
         Raises:
             Exception: LLM 调用失败时抛出
         """
-        if queue.is_empty():
-            logger.debug("队列为空，跳过总结")
+        if not messages:
+            logger.debug("消息列表为空，跳过总结")
             return None
         
         try:
-            # 构建总结提示词
-            messages = queue.to_message_list()
-            prompt = self._build_summary_prompt(messages)
+            total_tokens = sum(msg.token_count for msg in messages)
+            message_list = [
+                {"role": msg.role, "content": msg.content}
+                for msg in messages
+            ]
+            prompt = self._build_summary_prompt(message_list)
             
-            logger.info(f"开始总结队列，共 {len(queue)} 条消息，{queue.total_tokens} tokens")
+            logger.info(f"开始总结，共 {len(messages)} 条消息，{total_tokens} tokens")
             
-            # 调用 LLMManager
             summary = await self.llm_manager.generate(
                 prompt=prompt,
                 module="l1_summarizer",

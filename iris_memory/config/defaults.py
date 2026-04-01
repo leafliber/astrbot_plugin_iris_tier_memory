@@ -17,7 +17,8 @@ class L1BufferConfig:
     """L1 消息上下文缓冲配置"""
     enable: bool = True
     summary_provider: str = ""
-    inject_queue_length: int = 20
+    inject_queue_length: int = 30
+    retain_message_count: int = 10
     max_queue_tokens: int = 4000
     max_single_message_tokens: int = 500
 
