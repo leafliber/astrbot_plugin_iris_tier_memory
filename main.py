@@ -7,6 +7,7 @@ Iris Tier Memory - AstrBot 分层记忆插件
 - L3: 知识图谱（KuzuDB）
 """
 
+import asyncio
 import sys
 from pathlib import Path
 from typing import Optional
@@ -83,6 +84,7 @@ class IrisTierMemoryPlugin(Star):
         components = create_components(context, self)
         self.component_manager: Optional[ComponentManager] = ComponentManager(components)
         self._initialized: bool = False
+        self._init_lock: asyncio.Lock = asyncio.Lock()
         
         # 设置全局组件管理器引用
         set_component_manager(self.component_manager)
@@ -127,8 +129,12 @@ class IrisTierMemoryPlugin(Star):
         if self._initialized:
             return
         
-        await initialize_components(self.component_manager)
-        self._initialized = True
+        async with self._init_lock:
+            if self._initialized:
+                return
+            
+            await initialize_components(self.component_manager)
+            self._initialized = True
     
     async def terminate(self):
         """插件卸载时的清理钩子"""
