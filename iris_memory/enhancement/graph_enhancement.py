@@ -333,7 +333,7 @@ class GraphEnhancer:
             query3 = """
                 MATCH (e:Entity)
                 WHERE list_contains(map_keys(e.properties), 'active_users')
-                AND e.properties['active_users'] CONTAINS $user_id
+                AND contains(map_extract(e.properties, 'active_users')[1], $user_id)
                 AND ($group_id IS NULL OR e.group_id = $group_id)
                 RETURN e.id, e.name, e.label
                 LIMIT 5
