@@ -412,11 +412,11 @@ def _format_l2_memories_for_injection(
     
     for i, memory in enumerate(memories, 1):
         # 添加记忆内容
-        lines.append(f"{i}. {memory.content}")
+        lines.append(f"{i}. {memory.entry.content}")
         
         # 可选：添加置信度（如果足够高）
-        if memory.confidence and memory.confidence > 0.9:
-            lines.append(f"   （置信度：{memory.confidence:.2f}）")
+        if memory.entry.confidence and memory.entry.confidence > 0.9:
+            lines.append(f"   （置信度：{memory.entry.confidence:.2f}）")
     
     return chr(10).join(lines)
 
