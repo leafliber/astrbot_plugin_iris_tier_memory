@@ -357,7 +357,7 @@ class L1Buffer(Component):
                 logger.info(f"总结完成：{queue_key}, 长度：{len(summary)}")
                 
                 # 提取活跃用户列表
-                active_users = list(set(msg.source for msg in queue if msg.role == "user"))
+                active_users = list(set(msg.source for msg in queue.messages if msg.role == "user"))
                 
                 # 阶段 3：将总结写入 L2 记忆库
                 memory_id = await self._write_summary_to_l2(group_id, queue, summary)
@@ -420,7 +420,7 @@ class L1Buffer(Component):
             group_manager = GroupProfileManager(profile_storage)
             
             # 提取活跃用户列表（从 queue 中）
-            active_users = list(set(msg.source for msg in queue if msg.role == "user"))
+            active_users = list(set(msg.source for msg in queue.messages if msg.role == "user"))
             
             # 提取当前话题（使用总结的前 100 字符）
             current_topic = summary[:100] if len(summary) > 100 else summary
@@ -483,7 +483,7 @@ class L1Buffer(Component):
             }
             
             # 提取活跃用户列表（从 queue 中）
-            active_users = list(set(msg.source for msg in queue if msg.role == "user"))
+            active_users = list(set(msg.source for msg in queue.messages if msg.role == "user"))
             if active_users:
                 metadata["active_users"] = ",".join(active_users)
             
