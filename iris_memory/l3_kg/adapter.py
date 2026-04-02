@@ -340,42 +340,6 @@ class L3KGAdapter(Component):
             logger.error(f"获取所有节点失败：{e}")
             return []
     
-    async def get_all_edges(self, limit: int = 200) -> list[dict]:
-        """获取边（用于前端展示）
-        
-        Args:
-            limit: 最大返回数量，默认 200
-        
-        Returns:
-            边字典列表
-        """
-        if not self._is_available:
-            return []
-        
-        try:
-            result = self._conn.execute(f"""
-                MATCH (a:Entity)-[r:Related]->(b:Entity)
-                RETURN a.id, b.id, r.relation_type, r.confidence, r.source_memory_id
-                LIMIT {limit}
-            """)
-            
-            edges = []
-            for row in result:
-                edges.append({
-                    "source": row[0],
-                    "target": row[1],
-                    "relation": row[2],
-                    "confidence": row[3],
-                    "source_memory_id": row[4]
-                })
-            
-            logger.debug(f"获取到 {len(edges)} 条边")
-            return edges
-            
-        except Exception as e:
-            logger.error(f"获取所有边失败：{e}")
-            return []
-    
     async def get_random_person_node(self) -> Optional[dict]:
         """获取随机 Person 类型节点
         
