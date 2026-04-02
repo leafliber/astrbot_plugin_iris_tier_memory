@@ -246,12 +246,17 @@ class L3KGAdapter(Component):
             nodes = []
             edges = []
             for row in result:
-                nodes.extend(row["nodes"])
-                edges.extend(row["edges"])
+                path_nodes = row[0] if row[0] else []
+                path_edges = row[1] if row[1] else []
+                for n in path_nodes:
+                    if isinstance(n, dict) and "id" in n:
+                        nodes.append(n)
+                for e in path_edges:
+                    if isinstance(e, dict):
+                        edges.append(e)
             
-            # 去重
             nodes = list({n["id"]: n for n in nodes}.values())
-            edges = list({f"{e['source']}-{e['relation_type']}-{e['target']}": e for e in edges}.values())
+            edges = list({f"{e.get('source', '')}-{e.get('relation_type', '')}-{e.get('target', '')}": e for e in edges}.values())
             
             logger.info(f"路径扩展检索完成：{len(nodes)} 个节点，{len(edges)} 条边")
             return nodes, edges
@@ -378,72 +383,75 @@ class L3KGAdapter(Component):
         max_nodes: int = 50,
         max_edges: int = 100
     ) -> tuple[list[dict], list[dict]]:
-        """从指定节点拓展获取子图
-        
-        使用 BFS 方式拓展，获取指定深度内的所有节点和边。
-        
-        Args:
-            node_id: 起始节点 ID
-            depth: 拓展深度（1-3）
-            max_nodes: 最大节点数
-            max_edges: 最大边数
-        
-        Returns:
-            (节点列表, 边列表)
-        """
         if not self._is_available:
             return [], []
         
         depth = min(max(1, depth), 3)
         
         try:
-            if depth == 1:
-                query = f"""
-                    MATCH path = (start:Entity {{id: $node_id}})-[r:Related]-(neighbor:Entity)
-                    RETURN DISTINCT 
-                        neighbor.id, neighbor.label, neighbor.name, neighbor.content, neighbor.confidence,
-                        start.id as start_id, neighbor.id as end_id, r.relation_type
-                    LIMIT {max_nodes}
-                """
-            elif depth == 2:
-                query = f"""
-                    MATCH path = (start:Entity {{id: $node_id}})-[r1:Related*1..2]-(neighbor:Entity)
-                    WHERE neighbor.id <> $node_id
-                    RETURN DISTINCT 
-                        neighbor.id, neighbor.label, neighbor.name, neighbor.content, neighbor.confidence,
-                        start.id as start_id, neighbor.id as end_id, r1.relation_type
-                    LIMIT {max_nodes}
-                """
-            else:
-                query = f"""
-                    MATCH path = (start:Entity {{id: $node_id}})-[r1:Related*1..3]-(neighbor:Entity)
-                    WHERE neighbor.id <> $node_id
-                    RETURN DISTINCT 
-                        neighbor.id, neighbor.label, neighbor.name, neighbor.content, neighbor.confidence,
-                        start.id as start_id, neighbor.id as end_id, r1.relation_type
-                    LIMIT {max_nodes}
-                """
-            
-            result = self._conn.execute(query, {"node_id": node_id})
-            
             nodes_map = {}
+            node_ids_to_query = [node_id]
+            all_visited = {node_id}
+            
+            for current_depth in range(1, depth + 1):
+                if len(nodes_map) >= max_nodes:
+                    break
+                
+                remaining = max_nodes - len(nodes_map)
+                
+                if current_depth == 1:
+                    query = f"""
+                        MATCH (start:Entity {{id: $node_id}})-[r:Related]-(neighbor:Entity)
+                        WHERE NOT neighbor.id IN $visited
+                        RETURN DISTINCT neighbor.id, neighbor.label, neighbor.name, neighbor.content, neighbor.confidence
+                        LIMIT {remaining}
+                    """
+                    result = self._conn.execute(query, {"node_id": node_id, "visited": list(all_visited)})
+                else:
+                    query = f"""
+                        MATCH (start:Entity)-[r:Related]-(neighbor:Entity)
+                        WHERE start.id IN $current_ids AND NOT neighbor.id IN $visited
+                        RETURN DISTINCT neighbor.id, neighbor.label, neighbor.name, neighbor.content, neighbor.confidence
+                        LIMIT {remaining}
+                    """
+                    result = self._conn.execute(query, {"current_ids": node_ids_to_query, "visited": list(all_visited)})
+                
+                node_ids_to_query = []
+                for row in result:
+                    nid = row[0]
+                    if nid not in all_visited:
+                        all_visited.add(nid)
+                        node_ids_to_query.append(nid)
+                        nodes_map[nid] = {
+                            "id": nid,
+                            "label": row[1],
+                            "name": row[2],
+                            "content": row[3],
+                            "confidence": row[4]
+                        }
+                
+                if not node_ids_to_query:
+                    break
+            
+            start_node_result = self._conn.execute("""
+                MATCH (e:Entity {id: $node_id})
+                RETURN e.id, e.label, e.name, e.content, e.confidence
+            """, {"node_id": node_id})
+            
+            for row in start_node_result:
+                nodes_map[node_id] = {
+                    "id": row[0],
+                    "label": row[1],
+                    "name": row[2],
+                    "content": row[3],
+                    "confidence": row[4]
+                }
+            
             edges_list = []
             seen_edges = set()
             
-            for row in result:
-                node_id_found = row[0]
-                if node_id_found not in nodes_map:
-                    nodes_map[node_id_found] = {
-                        "id": node_id_found,
-                        "label": row[1],
-                        "name": row[2],
-                        "content": row[3],
-                        "confidence": row[4]
-                    }
-            
             if nodes_map:
                 node_ids = list(nodes_map.keys())
-                node_ids.append(node_id)
                 
                 edges_result = self._conn.execute(f"""
                     MATCH (a:Entity)-[r:Related]->(b:Entity)
@@ -462,20 +470,6 @@ class L3KGAdapter(Component):
                             "relation": row[2],
                             "confidence": row[3]
                         })
-            
-            start_node_result = self._conn.execute("""
-                MATCH (e:Entity {id: $node_id})
-                RETURN e.id, e.label, e.name, e.content, e.confidence
-            """, {"node_id": node_id})
-            
-            for row in start_node_result:
-                nodes_map[node_id] = {
-                    "id": row[0],
-                    "label": row[1],
-                    "name": row[2],
-                    "content": row[3],
-                    "confidence": row[4]
-                }
             
             nodes_list = list(nodes_map.values())
             
