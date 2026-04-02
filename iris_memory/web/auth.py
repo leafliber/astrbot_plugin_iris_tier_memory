@@ -7,6 +7,7 @@
 3. 验证用户名是否为管理员
 4. 适用于AstrBot > 3.5.17版本（修复CVE-2025-55449后）
 5. 支持速率限制防止暴力破解
+6. 支持 Iris 独立 Token 认证
 """
 import os
 from quart import request, jsonify
@@ -189,15 +190,17 @@ class DashboardAuth:
         
         优先级：
         1. Cookie中的jwt_token（浏览器访问）
-        2. Header中的Authorization Bearer Token（API调用）
+        2. URL参数中的token（跨端口访问）
+        3. Header中的Authorization Bearer Token（API调用）
         
         Returns:
             JWT Token字符串，如果不存在则返回None
         """
-        # 优先从Cookie获取（浏览器访问）
         token = request.cookies.get('jwt_token')
         
-        # 支持从Header获取（API调用）
+        if not token:
+            token = request.args.get('token')
+        
         if not token:
             auth_header = request.headers.get('Authorization', '')
             if auth_header.startswith('Bearer '):
@@ -281,6 +284,10 @@ class DashboardAuth:
     def require_auth(self, f):
         """认证装饰器
         
+        支持 Iris Token 和 AstrBot Token 双重认证：
+        1. 优先检查 Iris Token（Cookie: iris_token）
+        2. 其次检查 AstrBot Token（Cookie/URL参数: jwt_token）
+        
         用法：
             @dashboard_auth.require_auth
             async def protected_route():
@@ -308,7 +315,23 @@ class DashboardAuth:
                     'retry_after': 60
                 }), 429
             
-            # 获取Token
+            # 优先检查 Iris Token
+            iris_token = request.cookies.get('iris_token')
+            if iris_token:
+                try:
+                    from .routes.auth_routes import verify_iris_token
+                    iris_payload = verify_iris_token(iris_token)
+                    if iris_payload:
+                        request.current_user = iris_payload.get('username')
+                        request.is_admin = True
+                        response = await f(*args, **kwargs)
+                        if hasattr(response, 'headers'):
+                            response.headers['X-RateLimit-Remaining'] = str(remaining)
+                        return response
+                except Exception as e:
+                    logger.debug(f"Iris Token 验证失败: {e}")
+            
+            # 获取 AstrBot Token
             token = self._get_token()
             
             if not token:

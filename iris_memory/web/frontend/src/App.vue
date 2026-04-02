@@ -7,7 +7,7 @@
       persistent
     >
       <v-card
-        max-width="400"
+        max-width="550"
         class="text-center pa-6"
       >
         <v-icon
@@ -17,17 +17,92 @@
           class="mb-4"
         />
         <v-card-title class="text-h5 mb-2">需要登录</v-card-title>
-        <v-card-text class="text-body-1 mb-4">
-          请先登录 AstrBot Dashboard 后再访问此页面
+        <v-card-text class="text-body-1">
+          <v-alert
+            type="info"
+            variant="tonal"
+            class="text-left mb-4"
+          >
+            <p class="text-subtitle-2 font-weight-bold mb-2">认证流程说明</p>
+            <ol class="text-caption pl-4">
+              <li>先登录 AstrBot Dashboard（端口 {{ astrbotPort }}）</li>
+              <li>在 Dashboard 页面使用书签跳转到 Iris</li>
+              <li>自动完成认证</li>
+            </ol>
+          </v-alert>
+          
+          <!-- 书签方式 -->
+          <div class="mb-4">
+            <p class="text-subtitle-1 font-weight-medium mb-2">方式一：浏览器书签（推荐）</p>
+            <p class="text-caption text-medium-emphasis mb-3">
+              将下方按钮拖拽到浏览器书签栏，在 AstrBot Dashboard 页面点击即可自动跳转认证
+            </p>
+            <v-btn
+              color="primary"
+              size="large"
+              variant="outlined"
+              block
+              :href="bookmarkletCode"
+              @click.prevent="showBookmarkHint"
+            >
+              <v-icon start icon="mdi-bookmark-plus" />
+              📌 跳转到 Iris Memory
+            </v-btn>
+            <p class="text-caption text-medium-emphasis mt-2">
+              💡 提示：拖拽此按钮到书签栏，然后在 AstrBot Dashboard 页面使用
+            </p>
+          </div>
+          
+          <v-divider class="my-4">
+            <span class="text-caption text-medium-emphasis px-2">或者</span>
+          </v-divider>
+          
+          <!-- 手动输入 -->
+          <div class="mb-4">
+            <p class="text-subtitle-1 font-weight-medium mb-2">方式二：手动输入 Token</p>
+            <p class="text-caption text-medium-emphasis mb-3">
+              从 AstrBot Dashboard 的浏览器开发者工具中复制 Cookie
+            </p>
+            <v-text-field
+              v-model="manualToken"
+              label="JWT Token"
+              variant="outlined"
+              density="comfortable"
+              :type="showToken ? 'text' : 'password'"
+              :append-inner-icon="showToken ? 'mdi-eye-off' : 'mdi-eye'"
+              @click:append-inner="showToken = !showToken"
+              hint="Cookie 中的 jwt_token 值"
+              persistent-hint
+            />
+            <v-btn
+              color="secondary"
+              class="mt-4"
+              :disabled="!manualToken"
+              @click="handleManualLogin"
+            >
+              验证 Token
+            </v-btn>
+          </div>
+          
+          <v-divider class="my-4" />
+          
+          <!-- 直接跳转 -->
+          <div>
+            <p class="text-subtitle-1 font-weight-medium mb-2">方式三：直接访问</p>
+            <p class="text-caption text-medium-emphasis mb-3">
+              如果你已经在 AstrBot Dashboard 登录，可以直接访问带 Token 的链接
+            </p>
+            <v-btn
+              color="info"
+              variant="text"
+              :href="`http://${astrbotHost}/`"
+              target="_blank"
+              prepend-icon="mdi-open-in-new"
+            >
+              打开 AstrBot Dashboard
+            </v-btn>
+          </div>
         </v-card-text>
-        <v-btn
-          color="primary"
-          size="large"
-          href="/"
-          prepend-icon="mdi-login"
-        >
-          前往登录
-        </v-btn>
       </v-card>
     </v-overlay>
 
@@ -118,7 +193,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useAppStore } from '@/stores'
-import apiClient from '@/api/request'
+import apiClient, { setStoredToken, clearStoredToken } from '@/api/request'
 
 const route = useRoute()
 const appStore = useAppStore()
@@ -129,6 +204,17 @@ const drawer = ref(true)
 const rail = ref(false)
 const showError = ref(false)
 const isAuthenticated = ref(true)
+const manualToken = ref('')
+const showToken = ref(false)
+
+const astrbotPort = 6185
+const irisHost = window.location.host
+const astrbotHost = window.location.hostname + ':' + astrbotPort
+
+const bookmarkletCode = computed(() => {
+  const code = `javascript:(function(){var t=document.cookie.split('; ').find(r=>r.startsWith('jwt_token='));if(t){var e=t.split('=')[1];window.location.href='http://${irisHost}/iris/auth/login?token='+e;}else{alert('请先登录 AstrBot Dashboard');}})();`
+  return code
+})
 
 const navItems = [
   { to: '/dashboard', title: '仪表盘', icon: 'mdi-view-dashboard' },
@@ -154,6 +240,25 @@ const checkAuth = async () => {
   }
 }
 
+const handleManualLogin = async () => {
+  if (!manualToken.value.trim()) return
+  
+  setStoredToken(manualToken.value.trim())
+  
+  try {
+    await apiClient.get('/stats/system')
+    isAuthenticated.value = true
+  } catch (e: unknown) {
+    clearStoredToken()
+    const err = e as Error
+    alert('Token 验证失败: ' + err.message)
+  }
+}
+
+const showBookmarkHint = () => {
+  alert('请将此按钮拖拽到浏览器书签栏，然后在 AstrBot Dashboard 页面点击使用。\n\n使用步骤：\n1. 拖拽此按钮到书签栏\n2. 登录 AstrBot Dashboard\n3. 在 Dashboard 页面点击书签\n4. 自动跳转到 Iris 并完成认证')
+}
+
 const handleRefresh = () => {
   window.dispatchEvent(new CustomEvent('iris:refresh'))
 }
@@ -167,6 +272,12 @@ watch(error, (val) => {
 })
 
 onMounted(() => {
+  const urlToken = route.query.token as string
+  if (urlToken) {
+    setStoredToken(urlToken)
+    window.history.replaceState({}, '', route.path)
+  }
+  
   checkAuth()
 })
 </script>

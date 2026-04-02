@@ -24,6 +24,7 @@ from typing import Any, Optional
 from .routes.memory import memory_bp
 from .routes.profile import profile_bp
 from .routes.stats import stats_bp
+from .routes.auth_routes import auth_bp
 from .auth import dashboard_auth
 from .server import WebServer, create_web_server_from_config
 from iris_memory.core import get_logger
@@ -111,10 +112,12 @@ def register_routes(app: Any) -> None:
     
     功能：
         1. 注册后端 API 路由（/api/iris/*）
-        2. 托管前端静态资源（/iris/*）
+        2. 注册认证路由（/iris/auth/*）
+        3. 托管前端静态资源（/iris/*）
     
     访问路径：
         - API: /api/iris/memory/l2/search
+        - 认证: /iris/auth/login
         - 前端: /iris
     
     注意：
@@ -133,7 +136,10 @@ def register_routes(app: Any) -> None:
     # 注册到主应用
     app.register_blueprint(api_bp, url_prefix='/api/iris')
     
-    # 2. 托管前端静态资源（SPA）
+    # 2. 注册认证路由
+    app.register_blueprint(auth_bp, url_prefix='/iris/auth')
+    
+    # 3. 托管前端静态资源（SPA）
     frontend_dist = Path(__file__).parent / 'frontend' / 'dist'
     
     if frontend_dist.exists():
