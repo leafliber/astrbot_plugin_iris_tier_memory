@@ -157,6 +157,49 @@ async def list_l1_buffer():
         }), 500
 
 
+@memory_bp.route('/l1/queues', methods=['GET'])
+@dashboard_auth.require_auth
+async def list_l1_queues():
+    """
+    获取所有群聊的 L1 缓冲统计
+    
+    Response:
+        {
+            "success": true,
+            "queues": [
+                {
+                    "group_id": "group_123",
+                    "message_count": 10,
+                    "total_tokens": 500
+                }
+            ]
+        }
+    """
+    try:
+        manager = get_component_manager()
+        l1_buffer = manager.get_component("l1_buffer")
+        
+        if not l1_buffer or not l1_buffer.is_available:
+            return jsonify({
+                'success': False,
+                'error': 'L1 缓冲不可用'
+            }), 503
+        
+        queues = l1_buffer.get_all_queues_stats()
+        
+        return jsonify({
+            'success': True,
+            'queues': queues
+        })
+    
+    except Exception as e:
+        logger.error(f"获取 L1 队列列表失败：{e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @memory_bp.route('/l3/graph', methods=['GET'])
 @dashboard_auth.require_auth
 async def get_l3_graph():

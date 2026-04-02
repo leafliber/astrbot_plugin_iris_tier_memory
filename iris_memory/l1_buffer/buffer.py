@@ -732,6 +732,21 @@ class L1Buffer(Component):
             "max_capacity": config.get("l1_buffer.max_capacity", 100),
         }
     
+    def get_all_queues_stats(self) -> List[Dict[str, Any]]:
+        """获取所有群聊队列的统计信息
+        
+        Returns:
+            队列统计列表 [{"group_id": str, "message_count": int, "total_tokens": int}]
+        """
+        queues_stats = []
+        for group_id, queue in self._queues.items():
+            queues_stats.append({
+                "group_id": group_id,
+                "message_count": len(queue),
+                "total_tokens": queue.total_tokens,
+            })
+        return queues_stats
+    
     # ========================================================================
     # 图片队列管理
     # ========================================================================

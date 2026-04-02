@@ -1,12 +1,14 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { L1Message, L2Memory, KGGraph, KGNode } from '@/types'
+import type { L1Message, L2Memory, KGGraph, KGNode, L1QueueItem } from '@/types'
 import * as memoryApi from '@/api/memory'
 
 export const useMemoryStore = defineStore('memory', () => {
   // L1 缓冲
   const l1Messages = ref<L1Message[]>([])
   const l1Loading = ref(false)
+  const l1Queues = ref<L1QueueItem[]>([])
+  const l1QueuesLoading = ref(false)
 
   // L2 记忆
   const l2Results = ref<L2Memory[]>([])
@@ -32,6 +34,19 @@ export const useMemoryStore = defineStore('memory', () => {
       l1Messages.value = []
     } finally {
       l1Loading.value = false
+    }
+  }
+
+  // 获取 L1 队列列表
+  const fetchL1Queues = async () => {
+    l1QueuesLoading.value = true
+    try {
+      l1Queues.value = await memoryApi.getL1Queues()
+    } catch (error) {
+      console.error('获取L1队列列表失败:', error)
+      l1Queues.value = []
+    } finally {
+      l1QueuesLoading.value = false
     }
   }
 
@@ -117,6 +132,8 @@ export const useMemoryStore = defineStore('memory', () => {
   return {
     l1Messages,
     l1Loading,
+    l1Queues,
+    l1QueuesLoading,
     l2Results,
     l2Loading,
     l2Query,
@@ -127,6 +144,7 @@ export const useMemoryStore = defineStore('memory', () => {
     l3Loading,
     l3Depth,
     fetchL1Messages,
+    fetchL1Queues,
     searchL2Memory,
     fetchL2Stats,
     fetchL3Graph,

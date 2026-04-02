@@ -3,7 +3,8 @@ import type {
   L2SearchRequest,
   L2SearchResponse,
   KGGraph,
-  KGNode
+  KGNode,
+  L1QueueItem
 } from '@/types'
 import apiClient from './request'
 
@@ -14,6 +15,10 @@ interface ApiBaseResponse {
 }
 
 interface L1ListApiResponse extends ApiBaseResponse, L1ListResponse {}
+
+interface L1QueuesApiResponse extends ApiBaseResponse {
+  queues: L1QueueItem[]
+}
 
 interface L2SearchApiResponse extends ApiBaseResponse {
   results: L2SearchResponse['results']
@@ -46,6 +51,14 @@ export const getL1Messages = async (groupId?: string): Promise<L1ListResponse> =
     messages: response.messages || [],
     count: response.count || 0
   }
+}
+
+export const getL1Queues = async (): Promise<L1QueueItem[]> => {
+  const response = await apiClient.get('/memory/l1/queues') as unknown as L1QueuesApiResponse
+  if (!response.success) {
+    throw new Error(response.error || '获取L1队列列表失败')
+  }
+  return response.queues || []
 }
 
 export const searchL2Memory = async (params: L2SearchRequest): Promise<L2SearchResponse> => {

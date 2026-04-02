@@ -21,6 +21,13 @@ export interface L1Message {
   user_id?: string
 }
 
+// L1 队列项
+export interface L1QueueItem {
+  group_id: string
+  message_count: number
+  total_tokens: number
+}
+
 // L2 记忆条目
 export interface L2Memory {
   content: string

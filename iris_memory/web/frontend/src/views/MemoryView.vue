@@ -18,59 +18,122 @@
     <v-window v-model="activeTab" class="mt-4">
       <!-- L1 缓冲 -->
       <v-window-item value="l1">
-        <v-card color="surface" variant="flat">
-          <v-card-title class="d-flex align-center">
-            <span>L1 消息缓冲</span>
-            <v-spacer />
-            <v-btn
-              icon="mdi-refresh"
-              variant="text"
-              size="small"
-              :loading="memoryStore.l1Loading"
-              @click="loadL1Messages"
-            />
-          </v-card-title>
-          <v-card-text>
-            <v-progress-linear
-              v-if="memoryStore.l1Loading"
-              indeterminate
-              color="primary"
-            />
+        <v-row>
+          <v-col cols="12" md="4">
+            <v-card color="surface" variant="flat">
+              <v-card-title class="d-flex align-center">
+                <span>群聊列表</span>
+                <v-spacer />
+                <v-btn
+                  icon="mdi-refresh"
+                  variant="text"
+                  size="small"
+                  :loading="memoryStore.l1QueuesLoading"
+                  @click="loadL1Queues"
+                />
+              </v-card-title>
+              <v-card-text class="pa-0">
+                <v-progress-linear
+                  v-if="memoryStore.l1QueuesLoading"
+                  indeterminate
+                  color="primary"
+                />
 
-            <v-list v-else-if="memoryStore.l1Messages.length > 0" lines="three">
-              <v-list-item
-                v-for="(msg, index) in memoryStore.l1Messages"
-                :key="index"
-                :class="getRoleClass(msg.role)"
-              >
-                <template #prepend>
-                  <v-avatar :color="getRoleColor(msg.role)" variant="tonal">
-                    <v-icon :icon="getRoleIcon(msg.role)" size="small" />
-                  </v-avatar>
+                <v-list v-else-if="memoryStore.l1Queues.length > 0" lines="two">
+                  <v-list-item
+                    v-for="queue in memoryStore.l1Queues"
+                    :key="queue.group_id"
+                    :active="selectedL1GroupId === queue.group_id"
+                    @click="selectL1Group(queue.group_id)"
+                  >
+                    <template #prepend>
+                      <v-avatar color="primary" variant="tonal">
+                        <v-icon icon="mdi-account-group" />
+                      </v-avatar>
+                    </template>
+
+                    <v-list-item-title>{{ queue.group_id }}</v-list-item-title>
+                    <v-list-item-subtitle>
+                      {{ queue.message_count }} 条消息 · {{ queue.total_tokens }} tokens
+                    </v-list-item-subtitle>
+                  </v-list-item>
+                </v-list>
+
+                <div v-else class="text-center text-medium-emphasis py-8">
+                  <v-icon icon="mdi-inbox-outline" size="48" />
+                  <div class="mt-2">暂无群聊数据</div>
+                </div>
+              </v-card-text>
+            </v-card>
+          </v-col>
+
+          <v-col cols="12" md="8">
+            <v-card color="surface" variant="flat">
+              <v-card-title class="d-flex align-center">
+                <span>消息缓冲</span>
+                <v-chip v-if="selectedL1GroupId" size="small" color="primary" variant="tonal" class="ml-2">
+                  {{ selectedL1GroupId }}
+                </v-chip>
+                <v-spacer />
+                <v-btn
+                  v-if="selectedL1GroupId"
+                  icon="mdi-refresh"
+                  variant="text"
+                  size="small"
+                  :loading="memoryStore.l1Loading"
+                  @click="loadL1Messages"
+                />
+              </v-card-title>
+              <v-card-text>
+                <template v-if="selectedL1GroupId">
+                  <v-progress-linear
+                    v-if="memoryStore.l1Loading"
+                    indeterminate
+                    color="primary"
+                  />
+
+                  <v-list v-else-if="memoryStore.l1Messages.length > 0" lines="three">
+                    <v-list-item
+                      v-for="(msg, index) in memoryStore.l1Messages"
+                      :key="index"
+                      :class="getRoleClass(msg.role)"
+                    >
+                      <template #prepend>
+                        <v-avatar :color="getRoleColor(msg.role)" variant="tonal">
+                          <v-icon :icon="getRoleIcon(msg.role)" size="small" />
+                        </v-avatar>
+                      </template>
+
+                      <v-list-item-title class="font-weight-medium">
+                        {{ msg.role === 'user' ? '用户' : msg.role === 'assistant' ? '助手' : '系统' }}
+                      </v-list-item-title>
+
+                      <v-list-item-subtitle class="text-wrap mt-1">
+                        {{ msg.content }}
+                      </v-list-item-subtitle>
+
+                      <template #append>
+                        <span class="text-caption text-medium-emphasis">
+                          {{ formatTime(msg.timestamp) }}
+                        </span>
+                      </template>
+                    </v-list-item>
+                  </v-list>
+
+                  <div v-else class="text-center text-medium-emphasis py-8">
+                    <v-icon icon="mdi-message-outline" size="64" class="mb-2" />
+                    <div>暂无缓冲消息</div>
+                  </div>
                 </template>
 
-                <v-list-item-title class="font-weight-medium">
-                  {{ msg.role === 'user' ? '用户' : msg.role === 'assistant' ? '助手' : '系统' }}
-                </v-list-item-title>
-
-                <v-list-item-subtitle class="text-wrap mt-1">
-                  {{ msg.content }}
-                </v-list-item-subtitle>
-
-                <template #append>
-                  <span class="text-caption text-medium-emphasis">
-                    {{ formatTime(msg.timestamp) }}
-                  </span>
-                </template>
-              </v-list-item>
-            </v-list>
-
-            <div v-else class="text-center text-medium-emphasis py-8">
-              <v-icon icon="mdi-inbox-outline" size="64" class="mb-2" />
-              <div>暂无缓冲消息</div>
-            </div>
-          </v-card-text>
-        </v-card>
+                <div v-else class="text-center text-medium-emphasis py-8">
+                  <v-icon icon="mdi-hand-pointing-up" size="64" class="mb-2" />
+                  <div>请从左侧选择一个群聊</div>
+                </div>
+              </v-card-text>
+            </v-card>
+          </v-col>
+        </v-row>
       </v-window-item>
 
       <!-- L2 记忆 -->
@@ -275,9 +338,21 @@ const memoryStore = useMemoryStore()
 const activeTab = ref('l1')
 const searchQuery = ref('')
 const expandDepth = ref(2)
+const selectedL1GroupId = ref<string | null>(null)
+
+const loadL1Queues = () => {
+  memoryStore.fetchL1Queues()
+}
+
+const selectL1Group = (groupId: string) => {
+  selectedL1GroupId.value = groupId
+  memoryStore.fetchL1Messages(groupId)
+}
 
 const loadL1Messages = () => {
-  memoryStore.fetchL1Messages()
+  if (selectedL1GroupId.value) {
+    memoryStore.fetchL1Messages(selectedL1GroupId.value)
+  }
 }
 
 const loadL3Graph = () => {
@@ -342,12 +417,12 @@ const formatTime = (timestamp?: string): string => {
 
 // 刷新处理
 const handleRefresh = () => {
-  if (activeTab.value === 'l1') loadL1Messages()
+  if (activeTab.value === 'l1') loadL1Queues()
   else if (activeTab.value === 'l3') loadL3Graph()
 }
 
 onMounted(() => {
-  loadL1Messages()
+  loadL1Queues()
   window.addEventListener('iris:refresh', handleRefresh)
 })
 
