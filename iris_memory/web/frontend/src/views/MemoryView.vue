@@ -169,6 +169,33 @@
             />
           </v-card-title>
           <v-card-text>
+            <v-row class="mb-4">
+              <v-col cols="12" sm="6">
+                <div class="text-caption text-medium-emphasis mb-1">拓展深度</div>
+                <v-slider
+                  v-model="expandDepth"
+                  :min="1"
+                  :max="3"
+                  :step="1"
+                  thumb-label
+                  ticks
+                  @update:model-value="onDepthChange"
+                />
+              </v-col>
+              <v-col cols="12" sm="6">
+                <div class="text-caption text-medium-emphasis mb-1">起始节点</div>
+                <v-chip
+                  v-if="memoryStore.l3StartNode"
+                  color="primary"
+                  variant="tonal"
+                  size="small"
+                >
+                  {{ memoryStore.l3StartNode.name || memoryStore.l3StartNode.id }}
+                </v-chip>
+                <span v-else class="text-medium-emphasis">随机选择</span>
+              </v-col>
+            </v-row>
+
             <v-progress-linear
               v-if="memoryStore.l3Loading"
               indeterminate
@@ -176,42 +203,55 @@
             />
 
             <div v-else-if="memoryStore.l3Graph.nodes.length > 0">
-              <v-row>
-                <v-col cols="12" sm="6">
-                  <div class="text-subtitle-2 mb-2">节点 ({{ memoryStore.l3Graph.nodes.length }})</div>
-                  <v-chip-group>
-                    <v-chip
-                      v-for="node in memoryStore.l3Graph.nodes"
-                      :key="node.id"
-                      color="primary"
-                      variant="outlined"
-                      size="small"
-                    >
-                      {{ node.name || node.label }}
-                    </v-chip>
-                  </v-chip-group>
-                </v-col>
-                <v-col cols="12" sm="6">
-                  <div class="text-subtitle-2 mb-2">关系 ({{ memoryStore.l3Graph.edges.length }})</div>
-                  <v-list density="compact" class="bg-transparent">
-                    <v-list-item
-                      v-for="(edge, index) in memoryStore.l3Graph.edges"
-                      :key="index"
-                      class="px-0"
-                    >
-                      <template #prepend>
-                        <v-icon icon="mdi-arrow-right" size="small" />
-                      </template>
-                      <v-list-item-title class="text-body-2">
-                        {{ edge.source }} → {{ edge.target }}
-                      </v-list-item-title>
-                      <v-list-item-subtitle>
-                        {{ edge.relation }}
-                      </v-list-item-subtitle>
-                    </v-list-item>
-                  </v-list>
-                </v-col>
-              </v-row>
+              <div class="text-caption text-medium-emphasis mb-2">
+                点击节点可从该节点重新拓展
+              </div>
+              <div class="text-subtitle-2 mb-2">
+                节点
+                <v-chip size="x-small" color="primary" variant="tonal" class="ml-2">
+                  {{ memoryStore.l3Graph.nodes.length }} 个
+                </v-chip>
+              </div>
+              <v-chip-group column>
+                <v-chip
+                  v-for="node in memoryStore.l3Graph.nodes"
+                  :key="node.id"
+                  :color="node.id === memoryStore.l3StartNode?.id ? 'primary' : 'default'"
+                  :variant="node.id === memoryStore.l3StartNode?.id ? 'flat' : 'outlined'"
+                  size="small"
+                  class="cursor-pointer"
+                  @click="expandFromNode(node.id)"
+                >
+                  <v-icon v-if="node.label === 'Person'" icon="mdi-account" start size="small" />
+                  <v-icon v-else-if="node.label === 'Event'" icon="mdi-calendar" start size="small" />
+                  <v-icon v-else icon="mdi-tag" start size="small" />
+                  {{ node.name || node.id }}
+                </v-chip>
+              </v-chip-group>
+
+              <div class="text-subtitle-2 mb-2 mt-4">
+                关系
+                <v-chip size="x-small" color="secondary" variant="tonal" class="ml-2">
+                  {{ memoryStore.l3Graph.edges.length }} 条
+                </v-chip>
+              </div>
+              <v-list density="compact" class="bg-transparent" max-height="300">
+                <v-list-item
+                  v-for="(edge, index) in memoryStore.l3Graph.edges"
+                  :key="index"
+                  class="px-0"
+                >
+                  <template #prepend>
+                    <v-icon icon="mdi-arrow-right" size="small" />
+                  </template>
+                  <v-list-item-title class="text-body-2">
+                    {{ getNodeName(edge.source) }} → {{ getNodeName(edge.target) }}
+                  </v-list-item-title>
+                  <v-list-item-subtitle>
+                    {{ edge.relation }}
+                  </v-list-item-subtitle>
+                </v-list-item>
+              </v-list>
             </div>
 
             <div v-else class="text-center text-medium-emphasis py-8">
@@ -234,6 +274,7 @@ const memoryStore = useMemoryStore()
 
 const activeTab = ref('l1')
 const searchQuery = ref('')
+const expandDepth = ref(2)
 
 const loadL1Messages = () => {
   memoryStore.fetchL1Messages()
@@ -241,6 +282,19 @@ const loadL1Messages = () => {
 
 const loadL3Graph = () => {
   memoryStore.fetchL3Graph()
+}
+
+const expandFromNode = (nodeId: string) => {
+  memoryStore.expandFromNode(nodeId)
+}
+
+const onDepthChange = (depth: number) => {
+  memoryStore.setDepth(depth)
+}
+
+const getNodeName = (nodeId: string): string => {
+  const node = memoryStore.l3Graph.nodes.find(n => n.id === nodeId)
+  return node?.name || nodeId
 }
 
 const handleSearch = () => {
@@ -311,5 +365,8 @@ onUnmounted(() => {
 }
 .border-l-accent {
   border-left: 3px solid rgb(var(--v-theme-accent));
+}
+.cursor-pointer {
+  cursor: pointer;
 }
 </style>

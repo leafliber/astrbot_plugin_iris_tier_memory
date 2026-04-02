@@ -1,22 +1,21 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { GroupProfile, UserProfile, GroupListItem } from '@/types'
+import type { GroupProfile, UserProfile, GroupListItem, UserListItem } from '@/types'
 import * as profileApi from '@/api/profile'
 
 export const useProfileStore = defineStore('profile', () => {
-  // 群聊列表
   const groupList = ref<GroupListItem[]>([])
   const groupListLoading = ref(false)
 
-  // 当前群聊画像
   const currentGroupProfile = ref<GroupProfile | null>(null)
   const groupProfileLoading = ref(false)
 
-  // 当前用户画像
+  const userList = ref<UserListItem[]>([])
+  const userListLoading = ref(false)
+
   const currentUserProfile = ref<UserProfile | null>(null)
   const userProfileLoading = ref(false)
 
-  // 获取群聊列表
   const fetchGroupList = async () => {
     groupListLoading.value = true
     try {
@@ -29,7 +28,6 @@ export const useProfileStore = defineStore('profile', () => {
     }
   }
 
-  // 获取群聊画像
   const fetchGroupProfile = async (groupId: string) => {
     groupProfileLoading.value = true
     try {
@@ -42,13 +40,23 @@ export const useProfileStore = defineStore('profile', () => {
     }
   }
 
-  // 更新群聊画像
   const updateGroupProfile = async (groupId: string, data: Partial<GroupProfile>) => {
     await profileApi.updateGroupProfile(groupId, data)
     await fetchGroupProfile(groupId)
   }
 
-  // 获取用户画像
+  const fetchUserList = async (groupId?: string) => {
+    userListLoading.value = true
+    try {
+      userList.value = await profileApi.getUserList(groupId)
+    } catch (error) {
+      console.error('获取用户列表失败:', error)
+      userList.value = []
+    } finally {
+      userListLoading.value = false
+    }
+  }
+
   const fetchUserProfile = async (userId: string, groupId?: string) => {
     userProfileLoading.value = true
     try {
@@ -61,7 +69,6 @@ export const useProfileStore = defineStore('profile', () => {
     }
   }
 
-  // 更新用户画像
   const updateUserProfile = async (userId: string, data: Partial<UserProfile>, groupId?: string) => {
     await profileApi.updateUserProfile(userId, data, groupId)
     await fetchUserProfile(userId, groupId)
@@ -72,11 +79,14 @@ export const useProfileStore = defineStore('profile', () => {
     groupListLoading,
     currentGroupProfile,
     groupProfileLoading,
+    userList,
+    userListLoading,
     currentUserProfile,
     userProfileLoading,
     fetchGroupList,
     fetchGroupProfile,
     updateGroupProfile,
+    fetchUserList,
     fetchUserProfile,
     updateUserProfile
   }

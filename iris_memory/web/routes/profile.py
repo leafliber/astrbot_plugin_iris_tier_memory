@@ -316,3 +316,51 @@ async def list_group_profiles():
             'success': False,
             'error': str(e)
         }), 500
+
+
+@profile_bp.route('/users', methods=['GET'])
+@dashboard_auth.require_auth
+async def list_user_profiles():
+    """
+    获取用户画像列表
+    
+    Query Params:
+        group_id: 群聊ID（可选，默认为 default）
+    
+    Response:
+        {
+            "success": true,
+            "users": [
+                {
+                    "user_id": "user123",
+                    "nickname": "小明",
+                    "group_id": "123456"
+                }
+            ]
+        }
+    """
+    try:
+        group_id = request.args.get('group_id', 'default')
+        
+        manager = get_component_manager()
+        profile_storage = manager.get_component("profile")
+        
+        if not profile_storage or not profile_storage.is_available:
+            return jsonify({
+                'success': False,
+                'error': '画像系统不可用'
+            }), 503
+        
+        users = await profile_storage.list_users(group_id)
+        
+        return jsonify({
+            'success': True,
+            'users': users
+        })
+    
+    except Exception as e:
+        logger.error(f"获取用户列表失败：{e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500

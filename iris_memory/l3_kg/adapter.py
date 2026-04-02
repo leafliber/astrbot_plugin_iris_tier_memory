@@ -266,24 +266,41 @@ class L3KGAdapter(Component):
             包含节点数、边数、持久化路径等信息的字典
         """
         if not self._is_available:
-            return {"available": False}
+            return {"available": False, "node_count": 0, "edge_count": 0, "node_types": {}, "relation_types": {}}
         
         try:
             node_count = self._conn.execute("MATCH (e:Entity) RETURN COUNT(e) as count").get_next()[0]
             edge_count = self._conn.execute("MATCH ()-[r:Related]->() RETURN COUNT(r) as count").get_next()[0]
             
+            node_types_result = self._conn.execute("MATCH (e:Entity) RETURN e.label as label, COUNT(e) as count")
+            node_types = {}
+            for row in node_types_result:
+                if row[0]:
+                    node_types[row[0]] = row[1]
+            
+            relation_types_result = self._conn.execute("MATCH ()-[r:Related]->() RETURN r.relation_type as type, COUNT(r) as count")
+            relation_types = {}
+            for row in relation_types_result:
+                if row[0]:
+                    relation_types[row[0]] = row[1]
+            
             return {
                 "available": True,
                 "node_count": node_count,
                 "edge_count": edge_count,
+                "node_types": node_types,
+                "relation_types": relation_types,
                 "persist_dir": str(self._persist_dir)
             }
         except Exception as e:
             logger.error(f"获取图谱统计失败：{e}")
-            return {"available": False}
+            return {"available": False, "node_count": 0, "edge_count": 0, "node_types": {}, "relation_types": {}}
     
-    async def get_all_nodes(self) -> list[dict]:
-        """获取所有节点（用于遗忘淘汰任务）
+    async def get_all_nodes(self, limit: int = 100) -> list[dict]:
+        """获取节点（用于前端展示）
+        
+        Args:
+            limit: 最大返回数量，默认 100
         
         Returns:
             节点字典列表
@@ -292,11 +309,12 @@ class L3KGAdapter(Component):
             return []
         
         try:
-            result = self._conn.execute("""
+            result = self._conn.execute(f"""
                 MATCH (e:Entity)
                 RETURN e.id, e.label, e.name, e.content, e.confidence,
                        e.access_count, e.last_access_time, e.created_time,
                        e.source_memory_id, e.group_id, e.properties
+                LIMIT {limit}
             """)
             
             nodes = []
@@ -321,6 +339,190 @@ class L3KGAdapter(Component):
         except Exception as e:
             logger.error(f"获取所有节点失败：{e}")
             return []
+    
+    async def get_all_edges(self, limit: int = 200) -> list[dict]:
+        """获取边（用于前端展示）
+        
+        Args:
+            limit: 最大返回数量，默认 200
+        
+        Returns:
+            边字典列表
+        """
+        if not self._is_available:
+            return []
+        
+        try:
+            result = self._conn.execute(f"""
+                MATCH (a:Entity)-[r:Related]->(b:Entity)
+                RETURN a.id, b.id, r.relation_type, r.confidence, r.source_memory_id
+                LIMIT {limit}
+            """)
+            
+            edges = []
+            for row in result:
+                edges.append({
+                    "source": row[0],
+                    "target": row[1],
+                    "relation": row[2],
+                    "confidence": row[3],
+                    "source_memory_id": row[4]
+                })
+            
+            logger.debug(f"获取到 {len(edges)} 条边")
+            return edges
+            
+        except Exception as e:
+            logger.error(f"获取所有边失败：{e}")
+            return []
+    
+    async def get_random_person_node(self) -> Optional[dict]:
+        """获取随机 Person 类型节点
+        
+        Returns:
+            节点字典，无数据时返回 None
+        """
+        if not self._is_available:
+            return None
+        
+        try:
+            result = self._conn.execute("""
+                MATCH (e:Entity)
+                WHERE e.label = 'Person'
+                RETURN e.id, e.label, e.name, e.content, e.confidence
+                ORDER BY RANDOM()
+                LIMIT 1
+            """)
+            
+            for row in result:
+                return {
+                    "id": row[0],
+                    "label": row[1],
+                    "name": row[2],
+                    "content": row[3],
+                    "confidence": row[4]
+                }
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"获取随机Person节点失败：{e}")
+            return None
+    
+    async def expand_from_node(
+        self, 
+        node_id: str, 
+        depth: int = 2,
+        max_nodes: int = 50,
+        max_edges: int = 100
+    ) -> tuple[list[dict], list[dict]]:
+        """从指定节点拓展获取子图
+        
+        使用 BFS 方式拓展，获取指定深度内的所有节点和边。
+        
+        Args:
+            node_id: 起始节点 ID
+            depth: 拓展深度（1-3）
+            max_nodes: 最大节点数
+            max_edges: 最大边数
+        
+        Returns:
+            (节点列表, 边列表)
+        """
+        if not self._is_available:
+            return [], []
+        
+        depth = min(max(1, depth), 3)
+        
+        try:
+            if depth == 1:
+                query = f"""
+                    MATCH path = (start:Entity {{id: $node_id}})-[r:Related]-(neighbor:Entity)
+                    RETURN DISTINCT 
+                        neighbor.id, neighbor.label, neighbor.name, neighbor.content, neighbor.confidence,
+                        start.id as start_id, neighbor.id as end_id, r.relation_type
+                    LIMIT {max_nodes}
+                """
+            elif depth == 2:
+                query = f"""
+                    MATCH path = (start:Entity {{id: $node_id}})-[r1:Related*1..2]-(neighbor:Entity)
+                    WHERE neighbor.id <> $node_id
+                    RETURN DISTINCT 
+                        neighbor.id, neighbor.label, neighbor.name, neighbor.content, neighbor.confidence,
+                        start.id as start_id, neighbor.id as end_id, r1.relation_type
+                    LIMIT {max_nodes}
+                """
+            else:
+                query = f"""
+                    MATCH path = (start:Entity {{id: $node_id}})-[r1:Related*1..3]-(neighbor:Entity)
+                    WHERE neighbor.id <> $node_id
+                    RETURN DISTINCT 
+                        neighbor.id, neighbor.label, neighbor.name, neighbor.content, neighbor.confidence,
+                        start.id as start_id, neighbor.id as end_id, r1.relation_type
+                    LIMIT {max_nodes}
+                """
+            
+            result = self._conn.execute(query, {"node_id": node_id})
+            
+            nodes_map = {}
+            edges_list = []
+            seen_edges = set()
+            
+            for row in result:
+                node_id_found = row[0]
+                if node_id_found not in nodes_map:
+                    nodes_map[node_id_found] = {
+                        "id": node_id_found,
+                        "label": row[1],
+                        "name": row[2],
+                        "content": row[3],
+                        "confidence": row[4]
+                    }
+            
+            if nodes_map:
+                node_ids = list(nodes_map.keys())
+                node_ids.append(node_id)
+                
+                edges_result = self._conn.execute(f"""
+                    MATCH (a:Entity)-[r:Related]->(b:Entity)
+                    WHERE a.id IN $node_ids AND b.id IN $node_ids
+                    RETURN a.id, b.id, r.relation_type, r.confidence
+                    LIMIT {max_edges}
+                """, {"node_ids": node_ids})
+                
+                for row in edges_result:
+                    edge_key = f"{row[0]}->{row[1]}"
+                    if edge_key not in seen_edges:
+                        seen_edges.add(edge_key)
+                        edges_list.append({
+                            "source": row[0],
+                            "target": row[1],
+                            "relation": row[2],
+                            "confidence": row[3]
+                        })
+            
+            start_node_result = self._conn.execute("""
+                MATCH (e:Entity {id: $node_id})
+                RETURN e.id, e.label, e.name, e.content, e.confidence
+            """, {"node_id": node_id})
+            
+            for row in start_node_result:
+                nodes_map[node_id] = {
+                    "id": row[0],
+                    "label": row[1],
+                    "name": row[2],
+                    "content": row[3],
+                    "confidence": row[4]
+                }
+            
+            nodes_list = list(nodes_map.values())
+            
+            logger.debug(f"从节点 {node_id} 拓展深度 {depth}，获取 {len(nodes_list)} 节点，{len(edges_list)} 边")
+            return nodes_list, edges_list
+            
+        except Exception as e:
+            logger.error(f"从节点拓展失败：{e}")
+            return [], []
     
     async def evict_nodes(self, node_ids: list[str]) -> int:
         """淘汰节点及关联边（用于定时任务）

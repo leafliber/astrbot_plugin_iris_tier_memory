@@ -1,4 +1,4 @@
-import type { GroupProfile, UserProfile, GroupListItem } from '@/types'
+import type { GroupProfile, UserProfile, GroupListItem, UserListItem } from '@/types'
 import apiClient from './request'
 
 interface ApiBaseResponse {
@@ -16,6 +16,10 @@ interface UserProfileApiResponse extends ApiBaseResponse {
 
 interface GroupListApiResponse extends ApiBaseResponse {
   groups: GroupListItem[]
+}
+
+interface UserListApiResponse extends ApiBaseResponse {
+  users: UserListItem[]
 }
 
 export const getGroupProfile = async (groupId: string): Promise<GroupProfile> => {
@@ -56,4 +60,13 @@ export const getGroupList = async (): Promise<GroupListItem[]> => {
     throw new Error(response.error || '获取群聊列表失败')
   }
   return response.groups || []
+}
+
+export const getUserList = async (groupId?: string): Promise<UserListItem[]> => {
+  const params = groupId ? { group_id: groupId } : {}
+  const response = await apiClient.get('/profile/users', { params }) as unknown as UserListApiResponse
+  if (!response.success) {
+    throw new Error(response.error || '获取用户列表失败')
+  }
+  return response.users || []
 }

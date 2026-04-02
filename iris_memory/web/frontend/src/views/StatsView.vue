@@ -18,7 +18,7 @@
                 <v-list-item-title>L1 缓冲</v-list-item-title>
                 <template #append>
                   <v-chip size="small" variant="tonal" color="primary">
-                    {{ memoryStats?.l1?.queue_length ?? 0 }} / {{ memoryStats?.l1?.max_capacity ?? '∞' }}
+                    {{ memoryStats?.l1?.total_messages ?? 0 }} / {{ memoryStats?.l1?.max_capacity ?? '∞' }}
                   </v-chip>
                 </template>
               </v-list-item>

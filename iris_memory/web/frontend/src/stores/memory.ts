@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { L1Message, L2Memory, KGGraph } from '@/types'
+import type { L1Message, L2Memory, KGGraph, KGNode } from '@/types'
 import * as memoryApi from '@/api/memory'
 
 export const useMemoryStore = defineStore('memory', () => {
@@ -17,7 +17,9 @@ export const useMemoryStore = defineStore('memory', () => {
 
   // L3 图谱
   const l3Graph = ref<KGGraph>({ nodes: [], edges: [] })
+  const l3StartNode = ref<KGNode | null>(null)
   const l3Loading = ref(false)
+  const l3Depth = ref(2)
 
   // 获取 L1 缓冲
   const fetchL1Messages = async (groupId?: string) => {
@@ -59,18 +61,51 @@ export const useMemoryStore = defineStore('memory', () => {
     }
   }
 
-  // 获取 L3 图谱
-  const fetchL3Graph = async (groupId?: string) => {
+  // 获取 L3 图谱（支持拓展）
+  const fetchL3Graph = async (nodeId?: string) => {
     l3Loading.value = true
     try {
-      const graph = await memoryApi.getL3Graph(groupId)
-      l3Graph.value = graph
+      const response = await memoryApi.getL3Graph({
+        node_id: nodeId,
+        depth: l3Depth.value
+      })
+      l3Graph.value = {
+        nodes: response.nodes || [],
+        edges: response.edges || []
+      }
+      l3StartNode.value = response.start_node
     } catch (error) {
       console.error('获取L3图谱失败:', error)
       l3Graph.value = { nodes: [], edges: [] }
+      l3StartNode.value = null
     } finally {
       l3Loading.value = false
     }
+  }
+
+  // 从指定节点拓展
+  const expandFromNode = async (nodeId: string) => {
+    l3Loading.value = true
+    try {
+      const response = await memoryApi.getL3Graph({
+        node_id: nodeId,
+        depth: l3Depth.value
+      })
+      l3Graph.value = {
+        nodes: response.nodes || [],
+        edges: response.edges || []
+      }
+      l3StartNode.value = response.start_node
+    } catch (error) {
+      console.error('拓展图谱失败:', error)
+    } finally {
+      l3Loading.value = false
+    }
+  }
+
+  // 设置拓展深度
+  const setDepth = (depth: number) => {
+    l3Depth.value = depth
   }
 
   // 清除搜索结果
@@ -88,11 +123,15 @@ export const useMemoryStore = defineStore('memory', () => {
     l2TotalCount,
     l2GroupCount,
     l3Graph,
+    l3StartNode,
     l3Loading,
+    l3Depth,
     fetchL1Messages,
     searchL2Memory,
     fetchL2Stats,
     fetchL3Graph,
+    expandFromNode,
+    setDepth,
     clearL2Results
   }
 })

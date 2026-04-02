@@ -99,6 +99,13 @@ export interface GroupListItem {
   member_count?: number
 }
 
+// 用户列表项
+export interface UserListItem {
+  user_id: string
+  nickname?: string
+  group_id?: string
+}
+
 // ============================================
 // 统计相关类型
 // ============================================
@@ -118,7 +125,7 @@ export interface TokenStatsResponse {
 
 // L1 统计
 export interface L1Stats {
-  queue_length?: number
+  total_messages?: number
   max_capacity?: number
 }
 

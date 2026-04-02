@@ -104,12 +104,6 @@ class ProfileStorage(Component):
             return None
     
     async def save_group_profile(self, profile: GroupProfile, increment_version: bool = True) -> None:
-        """保存群聊画像
-        
-        Args:
-            profile: 群聊画像对象
-            increment_version: 是否增加版本号（默认 True）
-        """
         if not self._is_available:
             return
         
@@ -122,6 +116,7 @@ class ProfileStorage(Component):
         try:
             data = profile_to_dict(profile)
             await self._storage.put_kv_data(key, data)
+            await self._add_to_group_index(profile.group_id, persona_id)
             logger.debug(f"保存群聊画像成功: {key}, version={profile.version}")
         
         except Exception as e:
@@ -169,13 +164,6 @@ class ProfileStorage(Component):
         group_id: str = "default",
         increment_version: bool = True
     ) -> None:
-        """保存用户画像
-        
-        Args:
-            profile: 用户画像对象
-            group_id: 群聊ID（全局模式传 "default"）
-            increment_version: 是否增加版本号（默认 True）
-        """
         if not self._is_available:
             return
         
@@ -188,6 +176,7 @@ class ProfileStorage(Component):
         try:
             data = profile_to_dict(profile)
             await self._storage.put_kv_data(key, data)
+            await self._add_to_user_index(profile.user_id, group_id, persona_id)
             logger.debug(f"保存用户画像成功: {key}, version={profile.version}")
         
         except Exception as e:
@@ -272,18 +261,70 @@ class ProfileStorage(Component):
             return False
     
     async def list_groups(self) -> list:
-        """获取所有群聊列表
+        persona_id = self._get_persona_id()
+        index_key = f"group_index:{persona_id}"
         
-        Returns:
-            群聊画像列表
-        """
         try:
-            logger.warning("list_groups 方法暂未实现，需要 AstrBot KV 存储支持")
-            return []
+            group_ids = await self._storage.get_kv_data(index_key, [])
+            
+            groups = []
+            for group_id in group_ids:
+                profile = await self.get_group_profile(group_id)
+                if profile:
+                    groups.append({
+                        "group_id": group_id,
+                        "group_name": profile.group_name or group_id,
+                        "member_count": len(profile.active_users) if profile.active_users else 0
+                    })
+            
+            return groups
         
         except Exception as e:
             logger.error(f"获取群聊列表失败: {e}", exc_info=True)
             return []
+    
+    async def list_users(self, group_id: str = "default") -> list:
+        persona_id = self._get_persona_id()
+        index_key = f"user_index:{persona_id}:{group_id}"
+        
+        try:
+            user_ids = await self._storage.get_kv_data(index_key, [])
+            
+            users = []
+            for user_id in user_ids:
+                profile = await self.get_user_profile(user_id, group_id)
+                if profile:
+                    users.append({
+                        "user_id": user_id,
+                        "nickname": profile.nickname or user_id,
+                        "group_id": group_id
+                    })
+            
+            return users
+        
+        except Exception as e:
+            logger.error(f"获取用户列表失败: {e}", exc_info=True)
+            return []
+    
+    async def _add_to_group_index(self, group_id: str, persona_id: str) -> None:
+        index_key = f"group_index:{persona_id}"
+        try:
+            group_ids = await self._storage.get_kv_data(index_key, [])
+            if group_id not in group_ids:
+                group_ids.append(group_id)
+                await self._storage.put_kv_data(index_key, group_ids)
+        except Exception as e:
+            logger.error(f"更新群聊索引失败: {e}")
+    
+    async def _add_to_user_index(self, user_id: str, group_id: str, persona_id: str) -> None:
+        index_key = f"user_index:{persona_id}:{group_id}"
+        try:
+            user_ids = await self._storage.get_kv_data(index_key, [])
+            if user_id not in user_ids:
+                user_ids.append(user_id)
+                await self._storage.put_kv_data(index_key, user_ids)
+        except Exception as e:
+            logger.error(f"更新用户索引失败: {e}")
     
     async def delete_user_profile(
         self,

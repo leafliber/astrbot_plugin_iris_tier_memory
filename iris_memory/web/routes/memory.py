@@ -70,10 +70,10 @@ async def search_l2_memory():
         # 格式化响应
         formatted_results = [
             {
-                'content': r.content,
+                'content': r.entry.content,
                 'score': r.score,
-                'metadata': r.metadata,
-                'timestamp': r.metadata.get('timestamp')
+                'metadata': r.entry.metadata,
+                'timestamp': r.entry.metadata.get('timestamp')
             }
             for r in results
         ]
@@ -129,15 +129,14 @@ async def list_l1_buffer():
             }), 503
         
         # 获取消息列表
-        messages = await l1_buffer.get_messages(group_id)
+        messages = l1_buffer.get_context(group_id)
         
-        # 格式化响应
         formatted_messages = [
             {
                 'role': msg.role,
                 'content': msg.content,
-                'timestamp': msg.timestamp.isoformat() if hasattr(msg, 'timestamp') else None,
-                'user_id': msg.user_id if hasattr(msg, 'user_id') else None
+                'timestamp': msg.timestamp.isoformat() if msg.timestamp else None,
+                'user_id': msg.source if hasattr(msg, 'source') else None
             }
             for msg in messages
         ]
@@ -162,35 +161,28 @@ async def list_l1_buffer():
 @dashboard_auth.require_auth
 async def get_l3_graph():
     """
-    获取 L3 知识图谱数据
+    获取 L3 知识图谱数据（支持拓展）
     
     Query Params:
-        group_id: 群聊ID（可选）
+        node_id: 起始节点ID（可选，不指定则随机选择 Person 节点）
+        depth: 拓展深度 1-3（可选，默认2）
+        max_nodes: 最大节点数（可选，默认50）
+        max_edges: 最大边数（可选，默认100）
     
     Response:
         {
             "success": true,
-            "nodes": [
-                {
-                    "id": "node_id",
-                    "label": "Person",
-                    "name": "节点名称",
-                    "confidence": 0.95
-                }
-            ],
-            "edges": [
-                {
-                    "source": "node1",
-                    "target": "node2",
-                    "relation": "KNOWS"
-                }
-            ]
+            "start_node": {...},
+            "nodes": [...],
+            "edges": [...]
         }
     """
     try:
-        group_id = request.args.get('group_id')
+        node_id = request.args.get('node_id')
+        depth = request.args.get('depth', default=2, type=int)
+        max_nodes = request.args.get('max_nodes', default=50, type=int)
+        max_edges = request.args.get('max_edges', default=100, type=int)
         
-        # 获取L3图谱适配器
         manager = get_component_manager()
         l3_adapter = manager.get_component("l3_kg")
         
@@ -200,18 +192,58 @@ async def get_l3_graph():
                 'error': 'L3 知识图谱不可用'
             }), 503
         
-        # 获取图谱数据（需要实现get_graph_data方法）
-        # TODO: 在L3KGAdapter中实现get_graph_data方法
-        nodes = []
-        edges = []
+        if not node_id:
+            random_node = await l3_adapter.get_random_person_node()
+            if random_node:
+                node_id = random_node['id']
+            else:
+                return jsonify({
+                    'success': True,
+                    'start_node': None,
+                    'nodes': [],
+                    'edges': [],
+                    'message': '图谱中没有 Person 类型节点'
+                })
         
-        # 暂时返回空数据
-        logger.info(f"获取L3图谱成功：群聊={group_id}, 节点数={len(nodes)}, 边数={len(edges)}")
+        nodes, edges = await l3_adapter.expand_from_node(
+            node_id=node_id,
+            depth=depth,
+            max_nodes=max_nodes,
+            max_edges=max_edges
+        )
+        
+        start_node = None
+        for node in nodes:
+            if node['id'] == node_id:
+                start_node = node
+                break
+        
+        formatted_nodes = [
+            {
+                'id': node['id'],
+                'label': node.get('label', 'Entity'),
+                'name': node.get('name', node['id']),
+                'confidence': node.get('confidence', 0.5)
+            }
+            for node in nodes
+        ]
+        
+        formatted_edges = [
+            {
+                'source': edge['source'],
+                'target': edge['target'],
+                'relation': edge.get('relation', 'RELATED')
+            }
+            for edge in edges
+        ]
+        
+        logger.info(f"获取L3图谱成功：起始={node_id}, 深度={depth}, 节点={len(formatted_nodes)}, 边={len(formatted_edges)}")
         
         return jsonify({
             'success': True,
-            'nodes': nodes,
-            'edges': edges
+            'start_node': start_node,
+            'nodes': formatted_nodes,
+            'edges': formatted_edges
         })
     
     except Exception as e:

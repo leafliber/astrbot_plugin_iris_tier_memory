@@ -8,7 +8,7 @@
 """
 from quart import Blueprint, jsonify
 from iris_memory.web.auth import dashboard_auth
-from iris_memory.core import get_component_manager, get_logger
+from iris_memory.core import get_component_manager, get_logger, get_uptime
 from typing import Dict, Any
 
 logger = get_logger("web.stats")
@@ -320,7 +320,7 @@ async def get_all_stats():
                 logger.warning(f"获取L3统计失败：{e}")
         
         # 2. Token 统计
-        token_stats: Dict[str, Any] = {}
+        token_stats: Dict[str, Any] = {'global': {'total_input_tokens': 0, 'total_output_tokens': 0, 'total_calls': 0}}
         llm_manager = manager.get_component("llm_manager")
         if llm_manager and llm_manager.is_available:
             try:

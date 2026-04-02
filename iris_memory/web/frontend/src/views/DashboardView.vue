@@ -187,7 +187,7 @@ const componentNames: Record<string, string> = {
 }
 
 // L1 统计
-const l1QueueLength = computed(() => statsStore.memoryStats?.l1?.queue_length ?? 0)
+const l1QueueLength = computed(() => statsStore.memoryStats?.l1?.total_messages ?? 0)
 const l1MaxCapacity = computed(() => statsStore.memoryStats?.l1?.max_capacity)
 const l1UsagePercent = computed(() => {
   if (!l1MaxCapacity.value) return 0

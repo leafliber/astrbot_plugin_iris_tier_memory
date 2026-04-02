@@ -590,6 +590,36 @@ class L2MemoryAdapter(Component):
                 "total_count": 0,
                 "group_count": 0
             }
+        
+        try:
+            loop = asyncio.get_event_loop()
+            
+            results = await loop.run_in_executor(
+                None,
+                lambda: self._collection.get()
+            )
+            
+            total_count = len(results["ids"]) if results["ids"] else 0
+            
+            group_ids = set()
+            if results.get("metadatas"):
+                for meta in results["metadatas"]:
+                    if meta and "group_id" in meta:
+                        group_ids.add(meta["group_id"])
+            
+            group_count = len(group_ids)
+            
+            return {
+                "total_count": total_count,
+                "group_count": group_count
+            }
+        
+        except Exception as e:
+            logger.error(f"获取L2统计失败：{e}", exc_info=True)
+            return {
+                "total_count": 0,
+                "group_count": 0
+            }
     
     async def delete_by_group(self, group_id: str) -> int:
         """删除指定群聊的所有记忆

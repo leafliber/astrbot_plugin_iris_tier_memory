@@ -2,13 +2,15 @@ import type {
   L1ListResponse,
   L2SearchRequest,
   L2SearchResponse,
-  KGGraph
+  KGGraph,
+  KGNode
 } from '@/types'
 import apiClient from './request'
 
 interface ApiBaseResponse {
   success: boolean
   error?: string
+  message?: string
 }
 
 interface L1ListApiResponse extends ApiBaseResponse, L1ListResponse {}
@@ -21,7 +23,18 @@ interface L2StatsApiResponse extends ApiBaseResponse {
   stats: { total_count: number; group_count: number }
 }
 
-interface L3GraphApiResponse extends ApiBaseResponse, KGGraph {}
+interface L3GraphApiResponse extends ApiBaseResponse {
+  start_node: KGNode | null
+  nodes: KGGraph['nodes']
+  edges: KGGraph['edges']
+}
+
+export interface L3GraphParams {
+  node_id?: string
+  depth?: number
+  max_nodes?: number
+  max_edges?: number
+}
 
 export const getL1Messages = async (groupId?: string): Promise<L1ListResponse> => {
   const params = groupId ? { group_id: groupId } : {}
@@ -51,14 +64,10 @@ export const getL2Stats = async (): Promise<{ total_count: number; group_count: 
   return response.stats || { total_count: 0, group_count: 0 }
 }
 
-export const getL3Graph = async (groupId?: string): Promise<KGGraph> => {
-  const params = groupId ? { group_id: groupId } : {}
+export const getL3Graph = async (params?: L3GraphParams): Promise<L3GraphApiResponse> => {
   const response = await apiClient.get('/memory/l3/graph', { params }) as unknown as L3GraphApiResponse
   if (!response.success) {
-    throw new Error(response.error || '获取L3图谱失败')
+    throw new Error(response.error || response.message || '获取L3图谱失败')
   }
-  return {
-    nodes: response.nodes || [],
-    edges: response.edges || []
-  }
+  return response
 }
