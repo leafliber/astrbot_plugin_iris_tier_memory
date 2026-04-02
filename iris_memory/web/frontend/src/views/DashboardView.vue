@@ -114,7 +114,7 @@
         <v-card color="surface" variant="flat">
           <v-card-item>
             <template #prepend>
-              <v-icon icon="mdi-twitter" color="info" />
+              <v-icon icon="mdi-counter" color="info" />
             </template>
             <v-card-title>Token 使用统计</v-card-title>
             <v-card-subtitle>全局 Token 消耗</v-card-subtitle>

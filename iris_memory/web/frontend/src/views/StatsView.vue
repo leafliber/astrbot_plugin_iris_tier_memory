@@ -79,7 +79,7 @@
       <v-col cols="12" md="6">
         <v-card color="surface" variant="flat">
           <v-card-title class="d-flex align-center">
-            <v-icon icon="mdi-twitter" color="info" class="mr-2" />
+            <v-icon icon="mdi-counter" color="info" class="mr-2" />
             Token 消耗
           </v-card-title>
           <v-card-text>
@@ -213,13 +213,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useStatsStore } from '@/stores'
+import type { TokenStats } from '@/types'
 
 const statsStore = useStatsStore()
 
 const refreshInterval = ref<number | null>(null)
 
 const memoryStats = computed(() => statsStore.memoryStats)
-const tokenStats = computed(() => statsStore.tokenStats || {})
+const tokenStats = computed((): Record<string, TokenStats> => statsStore.tokenStats || {})
 const kgStats = computed(() => statsStore.kgStats)
 const systemStats = computed(() => statsStore.systemStats)
 
