@@ -7,6 +7,20 @@ Iris Tier Memory - 图片解析数据模型
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, Dict, Any, List
+from enum import Enum
+
+
+class ImageParseStatus(Enum):
+    """图片解析状态枚举
+    
+    Attributes:
+        PENDING: 待解析
+        SUCCESS: 解析成功
+        FAILED: 解析失败
+    """
+    PENDING = "pending"
+    SUCCESS = "success"
+    FAILED = "failed"
 
 
 # ============================================================================
@@ -400,3 +414,196 @@ class MessageImages:
             图片总数
         """
         return len(self.current_images) + len(self.reply_images)
+
+
+# ============================================================================
+# 图片队列项
+# ============================================================================
+
+@dataclass
+class ImageQueueItem:
+    """图片队列项数据类
+    
+    存储在 L1 Buffer 图片队列中的图片元数据。
+    
+    Attributes:
+        image_hash: 图片 hash（URL hash 或文件内容 hash）
+        image_url: 图片 URL
+        image_info: 图片完整信息
+        message_id: 关联消息 ID
+        group_id: 群聊 ID
+        user_id: 用户 ID
+        timestamp: 入队时间
+        status: 解析状态
+        
+    Examples:
+        >>> item = ImageQueueItem(
+        ...     image_hash="abc123",
+        ...     image_url="https://example.com/image.jpg",
+        ...     message_id="msg_001",
+        ...     group_id="group_001"
+        ... )
+        >>> item.status
+        <ImageParseStatus.PENDING: 'pending'>
+    """
+    
+    image_hash: str = ""
+    image_url: str = ""
+    image_info: Optional[ImageInfo] = None
+    message_id: str = ""
+    group_id: str = ""
+    user_id: str = ""
+    timestamp: datetime = field(default_factory=datetime.now)
+    status: ImageParseStatus = ImageParseStatus.PENDING
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典格式
+        
+        Returns:
+            包含所有字段的字典
+        """
+        return {
+            "image_hash": self.image_hash,
+            "image_url": self.image_url,
+            "image_info": self.image_info.to_dict() if self.image_info else None,
+            "message_id": self.message_id,
+            "group_id": self.group_id,
+            "user_id": self.user_id,
+            "timestamp": self.timestamp.isoformat(),
+            "status": self.status.value,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ImageQueueItem":
+        """从字典创建实例
+        
+        Args:
+            data: 包含队列项的字典
+        
+        Returns:
+            ImageQueueItem 实例
+        """
+        timestamp = data.get("timestamp")
+        if isinstance(timestamp, str):
+            timestamp = datetime.fromisoformat(timestamp)
+        else:
+            timestamp = datetime.now()
+        
+        image_info = None
+        if data.get("image_info"):
+            image_info = ImageInfo.from_dict(data["image_info"])
+        
+        status_str = data.get("status", "pending")
+        status = ImageParseStatus(status_str) if status_str in [s.value for s in ImageParseStatus] else ImageParseStatus.PENDING
+        
+        return cls(
+            image_hash=data.get("image_hash", ""),
+            image_url=data.get("image_url", ""),
+            image_info=image_info,
+            message_id=data.get("message_id", ""),
+            group_id=data.get("group_id", ""),
+            user_id=data.get("user_id", ""),
+            timestamp=timestamp,
+            status=status,
+        )
+
+
+# ============================================================================
+# 图片解析缓存
+# ============================================================================
+
+@dataclass
+class ImageParseCache:
+    """图片解析缓存数据类
+    
+    存储图片解析结果缓存，用于避免重复解析相同图片。
+    
+    Attributes:
+        image_hash: 图片 hash
+        content: 解析结果文本
+        input_tokens: 输入 token 数
+        output_tokens: 输出 token 数
+        created_at: 创建时间
+        last_accessed: 最后访问时间
+        access_count: 访问次数
+        
+    Examples:
+        >>> cache = ImageParseCache(
+        ...     image_hash="abc123",
+        ...     content="这是一张风景图片",
+        ...     input_tokens=150,
+        ...     output_tokens=30
+        ... )
+        >>> cache.access_count
+        1
+    """
+    
+    image_hash: str = ""
+    content: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    created_at: datetime = field(default_factory=datetime.now)
+    last_accessed: datetime = field(default_factory=datetime.now)
+    access_count: int = 1
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典格式
+        
+        Returns:
+            包含所有字段的字典
+        """
+        return {
+            "image_hash": self.image_hash,
+            "content": self.content,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "created_at": self.created_at.isoformat(),
+            "last_accessed": self.last_accessed.isoformat(),
+            "access_count": self.access_count,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ImageParseCache":
+        """从字典创建实例
+        
+        Args:
+            data: 包含缓存数据的字典
+        
+        Returns:
+            ImageParseCache 实例
+        """
+        created_at = data.get("created_at")
+        if isinstance(created_at, str):
+            created_at = datetime.fromisoformat(created_at)
+        else:
+            created_at = datetime.now()
+        
+        last_accessed = data.get("last_accessed")
+        if isinstance(last_accessed, str):
+            last_accessed = datetime.fromisoformat(last_accessed)
+        else:
+            last_accessed = datetime.now()
+        
+        return cls(
+            image_hash=data.get("image_hash", ""),
+            content=data.get("content", ""),
+            input_tokens=data.get("input_tokens", 0),
+            output_tokens=data.get("output_tokens", 0),
+            created_at=created_at,
+            last_accessed=last_accessed,
+            access_count=data.get("access_count", 1),
+        )
+    
+    def touch(self) -> None:
+        """更新访问时间和计数"""
+        self.last_accessed = datetime.now()
+        self.access_count += 1
+    
+    @property
+    def total_tokens(self) -> int:
+        """获取总 token 数
+        
+        Returns:
+            总 token 数
+        """
+        return self.input_tokens + self.output_tokens

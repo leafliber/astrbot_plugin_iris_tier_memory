@@ -5,12 +5,12 @@ Iris Tier Memory - 定时任务模块
 - TaskScheduler: 任务调度器（管理后台任务生命周期）
 - ForgettingTask: 遗忘清洗任务
 - MergeTask: 记忆合并任务
+- ImageCacheCleanupTask: 图片缓存清理任务
 """
 
 from iris_memory.core import get_logger
 
-# 延迟导入，避免循环依赖
-__all__ = ["TaskScheduler", "ForgettingTask", "MergeTask"]
+__all__ = ["TaskScheduler", "ForgettingTask", "MergeTask", "ImageCacheCleanupTask"]
 
 
 def __getattr__(name: str):
@@ -24,6 +24,9 @@ def __getattr__(name: str):
     elif name == "MergeTask":
         from .merge_task import MergeTask
         return MergeTask
+    elif name == "ImageCacheCleanupTask":
+        from .cache_cleanup_task import ImageCacheCleanupTask
+        return ImageCacheCleanupTask
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

@@ -52,6 +52,9 @@ class ImageParsingConfig:
     provider: str = ""
     parsing_mode: Literal["all", "related"] = "related"
     daily_quota: int = 200
+    max_parse_per_request: int = 5
+    max_concurrent_parse: int = 3
+    cache_retention_days: int = 7
 
 
 @dataclass
@@ -134,6 +137,7 @@ class HiddenConfig:
     merge_similarity_threshold: float = 0.85    # 合并相似度阈值
     merge_batch_size: int = 10                  # 合并批处理大小
     eviction_batch_size: int = 100              # 淘汰批处理大小
+    image_cache_cleanup_interval_hours: int = 24  # 图片缓存清理任务间隔（小时）
     
     # Tool 配置参数
     tool_memory_max_content_length: int = 500          # 记忆内容最大长度

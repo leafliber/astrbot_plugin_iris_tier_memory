@@ -479,14 +479,17 @@ async def _parse_images_if_related_mode(
     req: "ProviderRequest",
     component_manager: "ComponentManager"
 ) -> None:
-    """解析图片并入队 L1 Buffer（related 模式）
+    """解析图片并注入 LLM 上下文（related 模式）
     
-    仅在 related 模式下解析相关图片。
+    仅在 related 模式下解析 L1 Buffer 范围内的图片。
     all 模式已在消息钩子中处理。
     
-    相关图片包括：
-    - 触发 LLM 的消息中的图片
-    - 触发 LLM 的消息所引用/回复的消息中的图片
+    流程：
+    1. 获取 L1Buffer 图片队列中的待解析图片
+    2. 检查缓存，过滤已解析的图片
+    3. 批量解析（并发控制、数量限制）
+    4. 结果存入缓存
+    5. 注入 LLM 上下文
     
     Args:
         event: AstrBot 消息事件对象
@@ -495,106 +498,148 @@ async def _parse_images_if_related_mode(
     """
     from iris_memory.config import get_config
     from iris_memory.platform import get_adapter
+    from iris_memory.image import ImageParser, ImageParseStatus, ImageParseCache
+    import asyncio
     
     config = get_config()
     if not config.get("image_parsing.enable"):
         return
     
-    # 2. 获取解析模式
     mode = config.get("image_parsing.parsing_mode", "related")
     
-    # 3. 如果是 all 模式，不做任何事（已在消息钩子中处理）
     if mode == "all":
         return
     
-    # 4. related 模式：解析相关图片
     if mode != "related":
         logger.warning(f"未知的图片解析模式：{mode}")
         return
     
-    # 5. 从平台适配器获取图片列表
     adapter = get_adapter(event)
-    images = adapter.get_images(event)
+    group_id = adapter.get_group_id(event)
     
-    if not images:
-        logger.debug("消息中无图片，跳过解析")
+    buffer = component_manager.get_component("l1_buffer")
+    if not buffer or not buffer.is_available:
         return
     
-    # 6. 获取 ImageQuotaManager 组件
+    l1_buffer = cast("L1Buffer", buffer)
+    
+    cache_manager = component_manager.get_component("image_cache")
     quota_manager = component_manager.get_component("image_quota")
-    if not quota_manager or not quota_manager.is_available:
-        logger.debug("图片解析配额管理器不可用，跳过解析")
-        return
-    
-    # 7. 检查配额
-    has_quota = await quota_manager.check_quota()
-    if not has_quota:
-        logger.info("图片解析配额已耗尽，跳过解析")
-        return
-    
-    # 8. 使用配额
-    quota_used = await quota_manager.use_quota(len(images))
-    if not quota_used:
-        logger.warning("图片解析配额使用失败")
-        return
-    
-    # 9. 获取 LLMManager 组件
     llm_manager = component_manager.get_component("llm_manager")
+    
     if not llm_manager or not llm_manager.is_available:
         logger.warning("LLM Manager 不可用，跳过图片解析")
         return
     
-    # 10. 创建 ImageParser
-    from iris_memory.image import ImageParser
+    max_parse = config.get("image_parsing.max_parse_per_request", 5)
+    max_concurrent = config.get("image_parsing.max_concurrent_parse", 3)
     
-    provider = config.get("image_parsing.provider", "")
-    parser = ImageParser(llm_manager, provider)
+    pending_images = l1_buffer.get_images(group_id, limit=max_parse, only_pending=True)
     
-    # 11. 解析图片
-    logger.info(f"开始解析 {len(images)} 张图片（related 模式）")
-    
-    parse_results = await parser.parse_batch(images)
-    
-    # 12. 将解析结果入队 L1 Buffer
-    buffer = component_manager.get_component("l1_buffer")
-    if not buffer or not buffer.is_available:
-        logger.warning("L1 Buffer 不可用，无法入队图片解析结果")
+    if not pending_images:
         return
     
-    l1_buffer = cast("L1Buffer", buffer)
-    group_id = adapter.get_group_id(event)
-    user_id = adapter.get_user_id(event)
+    images_to_parse = []
+    cached_results = []
     
-    success_count = 0
-    for result in parse_results:
-        if not result.success:
-            logger.warning(f"图片解析失败：{result.error_message}")
-            continue
+    for img_item in pending_images:
+        if cache_manager and cache_manager.is_available:
+            cached = await cache_manager.get_cache(img_item.image_hash)
+            if cached:
+                l1_buffer.mark_image_parsed(group_id, img_item.image_hash, ImageParseStatus.SUCCESS)
+                cached_results.append((img_item, cached))
+                continue
         
-        if not result.content:
-            logger.debug("图片解析结果为空，跳过入队")
-            continue
-        
-        # 入队解析结果
-        await l1_buffer.add_message(
-            group_id=group_id,
-            role="user",
-            content=f"[图片内容] {result.content}",
-            source=user_id
-        )
-        success_count += 1
+        images_to_parse.append(img_item)
     
-    logger.info(f"已入队 {success_count}/{len(images)} 张图片的解析结果")
+    if cached_results:
+        logger.debug(f"从缓存读取 {len(cached_results)} 条图片解析结果")
     
-    # 13. 将图片解析结果追加到 req.contexts
-    for result in parse_results:
-        if result.success and result.content:
+    if not images_to_parse:
+        for img_item, cached in cached_results:
             if req.contexts is None:
                 req.contexts = []
             req.contexts.append({
                 "role": "user",
-                "content": f"[图片内容] {result.content}"
+                "content": f"[图片内容] {cached.content}"
             })
+        return
     
-    if success_count > 0:
-        logger.debug(f"已追加 {success_count} 条图片解析结果到 LLM 请求上下文")
+    if quota_manager and quota_manager.is_available:
+        has_quota = await quota_manager.check_quota()
+        if not has_quota:
+            logger.info("图片解析配额已耗尽，跳过解析")
+            return
+        
+        quota_used = await quota_manager.use_quota(len(images_to_parse))
+        if not quota_used:
+            logger.warning("图片解析配额使用失败")
+            return
+    
+    provider = config.get("image_parsing.provider", "")
+    parser = ImageParser(llm_manager, provider)
+    
+    logger.info(f"开始解析 {len(images_to_parse)} 张图片（related 模式）")
+    
+    semaphore = asyncio.Semaphore(max_concurrent)
+    
+    async def parse_with_semaphore(img_item):
+        async with semaphore:
+            if not img_item.image_info or not img_item.image_info.has_url:
+                return (img_item, None)
+            result = await parser.parse(img_item.image_info)
+            return (img_item, result)
+    
+    parse_tasks = [parse_with_semaphore(img) for img in images_to_parse]
+    parse_results = await asyncio.gather(*parse_tasks)
+    
+    success_count = 0
+    for img_item, result in parse_results:
+        if result is None:
+            l1_buffer.mark_image_parsed(group_id, img_item.image_hash, ImageParseStatus.FAILED)
+            continue
+        
+        if not result.success:
+            logger.warning(f"图片解析失败：{result.error_message}")
+            l1_buffer.mark_image_parsed(group_id, img_item.image_hash, ImageParseStatus.FAILED)
+            continue
+        
+        if not result.content:
+            logger.debug("图片解析结果为空")
+            l1_buffer.mark_image_parsed(group_id, img_item.image_hash, ImageParseStatus.FAILED)
+            continue
+        
+        if cache_manager and cache_manager.is_available:
+            cache = ImageParseCache(
+                image_hash=img_item.image_hash,
+                content=result.content,
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens
+            )
+            await cache_manager.set_cache(cache)
+        
+        l1_buffer.mark_image_parsed(group_id, img_item.image_hash, ImageParseStatus.SUCCESS)
+        
+        if req.contexts is None:
+            req.contexts = []
+        req.contexts.append({
+            "role": "user",
+            "content": f"[图片内容] {result.content}"
+        })
+        
+        success_count += 1
+    
+    for img_item, cached in cached_results:
+        if req.contexts is None:
+            req.contexts = []
+        req.contexts.append({
+            "role": "user",
+            "content": f"[图片内容] {cached.content}"
+        })
+    
+    total_injected = success_count + len(cached_results)
+    if total_injected > 0:
+        logger.info(
+            f"已注入 {total_injected} 条图片解析结果到 LLM 上下文 "
+            f"（新解析 {success_count}，缓存 {len(cached_results)}）"
+        )

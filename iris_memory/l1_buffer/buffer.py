@@ -5,7 +5,7 @@ Iris Tier Memory - L1 消息缓冲组件
 支持群聊隔离和人格切换时清空所有队列。
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 import asyncio
 
@@ -56,6 +56,7 @@ class L1Buffer(Component):
         """初始化 L1 缓冲组件"""
         super().__init__()
         self._queues: Dict[str, MessageQueue] = {}
+        self._image_queues: Dict[str, List[Any]] = {}
         self._summarizer: Optional[Summarizer] = None
         self._component_manager: Optional["ComponentManager"] = None
         self._provider: str = ""
@@ -310,6 +311,8 @@ class L1Buffer(Component):
             old_size = len(queue)
             queue.clear()
             logger.info(f"已清空队列：{queue_key}，原 {old_size} 条消息")
+        
+        self.clear_images_for_queue(group_id)
     
     def clear_all(self) -> int:
         """清空所有队列
@@ -321,6 +324,7 @@ class L1Buffer(Component):
         """
         total_messages = sum(len(q) for q in self._queues.values())
         self._queues.clear()
+        self._image_queues.clear()
         logger.info(f"已清空所有队列，共 {total_messages} 条消息")
         return total_messages
     
@@ -370,6 +374,7 @@ class L1Buffer(Component):
             old_size = len(queue)
             queue.clear()
             logger.info(f"已清空队列：{queue_key}，原 {old_size} 条消息")
+            self.clear_images_for_queue(group_id)
             return old_size
         
         return 0
@@ -479,6 +484,9 @@ class L1Buffer(Component):
                     logger.warning(f"总结返回空，队列 {queue_key}")
                 
                 queue.remove_messages(to_summarize)
+                
+                self._clear_images_for_summarized_messages(queue_key, to_summarize)
+                
                 logger.info(
                     f"队列已更新：{queue_key}，剩余 {len(queue)} 条消息，"
                     f"{queue.total_tokens} tokens"
@@ -723,3 +731,209 @@ class L1Buffer(Component):
             "total_tokens": total_tokens,
             "max_capacity": config.get("l1_buffer.max_capacity", 100),
         }
+    
+    # ========================================================================
+    # 图片队列管理
+    # ========================================================================
+    
+    def add_image(self, group_id: str, image_item: Any) -> None:
+        """添加图片到图片队列
+        
+        Args:
+            group_id: 群聊ID
+            image_item: 图片队列项（ImageQueueItem）
+        """
+        queue_key = self._get_queue_key(group_id)
+        
+        if queue_key not in self._image_queues:
+            self._image_queues[queue_key] = []
+        
+        self._image_queues[queue_key].append(image_item)
+        logger.debug(
+            f"图片已入队：{queue_key}, hash={image_item.image_hash[:8]}..., "
+            f"队列大小={len(self._image_queues[queue_key])}"
+        )
+    
+    def get_images(
+        self, 
+        group_id: str, 
+        limit: Optional[int] = None,
+        only_pending: bool = True
+    ) -> List[Any]:
+        """获取图片队列中的图片
+        
+        Args:
+            group_id: 群聊ID
+            limit: 最大返回数量（None 表示不限制）
+            only_pending: 是否只返回待解析的图片
+        
+        Returns:
+            图片队列项列表
+        """
+        queue_key = self._get_queue_key(group_id)
+        
+        if queue_key not in self._image_queues:
+            return []
+        
+        images = self._image_queues[queue_key]
+        
+        if only_pending:
+            from iris_memory.image import ImageParseStatus
+            images = [img for img in images if img.status == ImageParseStatus.PENDING]
+        
+        if limit is not None:
+            images = images[:limit]
+        
+        return images
+    
+    def mark_image_parsed(
+        self, 
+        group_id: str, 
+        image_hash: str, 
+        status: Any
+    ) -> bool:
+        """标记图片解析状态
+        
+        Args:
+            group_id: 群聊ID
+            image_hash: 图片 hash
+            status: 解析状态（ImageParseStatus）
+        
+        Returns:
+            是否成功标记
+        """
+        queue_key = self._get_queue_key(group_id)
+        
+        if queue_key not in self._image_queues:
+            return False
+        
+        for img in self._image_queues[queue_key]:
+            if img.image_hash == image_hash:
+                img.status = status
+                logger.debug(
+                    f"图片状态已更新：{queue_key}, hash={image_hash[:8]}..., "
+                    f"status={status.value}"
+                )
+                return True
+        
+        return False
+    
+    def clear_images_for_message(self, group_id: str, message_id: str) -> int:
+        """清理指定消息的图片
+        
+        Args:
+            group_id: 群聊ID
+            message_id: 消息ID
+        
+        Returns:
+            清理的图片数量
+        """
+        queue_key = self._get_queue_key(group_id)
+        
+        if queue_key not in self._image_queues:
+            return 0
+        
+        original_count = len(self._image_queues[queue_key])
+        self._image_queues[queue_key] = [
+            img for img in self._image_queues[queue_key]
+            if img.message_id != message_id
+        ]
+        
+        removed_count = original_count - len(self._image_queues[queue_key])
+        if removed_count > 0:
+            logger.debug(
+                f"已清理消息 {message_id} 的 {removed_count} 张图片"
+            )
+        
+        return removed_count
+    
+    def clear_images_for_queue(self, group_id: str) -> int:
+        """清理指定群聊的所有图片
+        
+        Args:
+            group_id: 群聊ID
+        
+        Returns:
+            清理的图片数量
+        """
+        queue_key = self._get_queue_key(group_id)
+        
+        if queue_key not in self._image_queues:
+            return 0
+        
+        removed_count = len(self._image_queues[queue_key])
+        del self._image_queues[queue_key]
+        
+        if removed_count > 0:
+            logger.debug(f"已清理队列 {queue_key} 的 {removed_count} 张图片")
+        
+        return removed_count
+    
+    def get_image_stats(self, group_id: str) -> Optional[Dict[str, Any]]:
+        """获取图片队列统计信息
+        
+        Args:
+            group_id: 群聊ID
+        
+        Returns:
+            统计信息字典
+        """
+        queue_key = self._get_queue_key(group_id)
+        
+        if queue_key not in self._image_queues:
+            return None
+        
+        from iris_memory.image import ImageParseStatus
+        
+        images = self._image_queues[queue_key]
+        pending_count = sum(1 for img in images if img.status == ImageParseStatus.PENDING)
+        success_count = sum(1 for img in images if img.status == ImageParseStatus.SUCCESS)
+        failed_count = sum(1 for img in images if img.status == ImageParseStatus.FAILED)
+        
+        return {
+            "group_id": queue_key,
+            "total_count": len(images),
+            "pending_count": pending_count,
+            "success_count": success_count,
+            "failed_count": failed_count,
+        }
+    
+    def _clear_images_for_summarized_messages(
+        self, 
+        queue_key: str, 
+        messages: list[ContextMessage]
+    ) -> int:
+        """清理被总结消息对应的图片
+        
+        Args:
+            queue_key: 队列键
+            messages: 被总结的消息列表
+        
+        Returns:
+            清理的图片数量
+        """
+        if queue_key not in self._image_queues:
+            return 0
+        
+        message_ids = set()
+        for msg in messages:
+            msg_id = msg.metadata.get("message_id")
+            if msg_id:
+                message_ids.add(msg_id)
+        
+        if not message_ids:
+            return 0
+        
+        original_count = len(self._image_queues[queue_key])
+        self._image_queues[queue_key] = [
+            img for img in self._image_queues[queue_key]
+            if img.message_id not in message_ids
+        ]
+        
+        removed_count = original_count - len(self._image_queues[queue_key])
+        if removed_count > 0:
+            logger.debug(
+                f"已清理被总结消息的 {removed_count} 张图片"
+            )
+        
+        return removed_count
