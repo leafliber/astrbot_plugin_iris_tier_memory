@@ -341,31 +341,29 @@ class L3KGAdapter(Component):
             return []
     
     async def get_random_person_node(self) -> Optional[dict]:
-        """获取随机 Person 类型节点
-        
-        Returns:
-            节点字典，无数据时返回 None
-        """
         if not self._is_available:
             return None
         
         try:
+            import random
             result = self._conn.execute("""
                 MATCH (e:Entity)
                 WHERE e.label = 'Person'
                 RETURN e.id, e.label, e.name, e.content, e.confidence
-                ORDER BY RANDOM()
-                LIMIT 1
             """)
             
+            nodes = []
             for row in result:
-                return {
+                nodes.append({
                     "id": row[0],
                     "label": row[1],
                     "name": row[2],
                     "content": row[3],
                     "confidence": row[4]
-                }
+                })
+            
+            if nodes:
+                return random.choice(nodes)
             
             return None
             

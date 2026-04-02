@@ -296,7 +296,7 @@ class ProfileStorage(Component):
                 if profile:
                     users.append({
                         "user_id": user_id,
-                        "nickname": profile.nickname or user_id,
+                        "nickname": profile.user_name or user_id,
                         "group_id": group_id
                     })
             

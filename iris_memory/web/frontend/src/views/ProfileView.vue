@@ -118,25 +118,28 @@
                       </v-col>
 
                       <v-col cols="12" sm="6">
-                        <v-text-field
-                          v-model="editGroupProfile.atmosphere"
-                          label="群聊氛围"
-                          variant="outlined"
-                          density="comfortable"
-                          placeholder="例如: 友好活跃"
-                        />
-                      </v-col>
-
-                      <v-col cols="12" sm="6">
                         <v-combobox
-                          v-model="editGroupProfile.topics"
-                          label="话题标签"
+                          v-model="editGroupProfile.atmosphere_tags"
+                          label="氛围标签"
                           variant="outlined"
                           density="comfortable"
                           multiple
                           chips
                           closable-chips
-                          placeholder="添加话题标签"
+                          placeholder="添加氛围标签"
+                        />
+                      </v-col>
+
+                      <v-col cols="12" sm="6">
+                        <v-combobox
+                          v-model="editGroupProfile.interests"
+                          label="兴趣标签"
+                          variant="outlined"
+                          density="comfortable"
+                          multiple
+                          chips
+                          closable-chips
+                          placeholder="添加兴趣标签"
                         />
                       </v-col>
 
@@ -153,9 +156,9 @@
                         />
                       </v-col>
 
-                      <v-col cols="12" v-if="profileStore.currentGroupProfile.last_active_time">
+                      <v-col cols="12" v-if="profileStore.currentGroupProfile.last_interaction_time">
                         <v-text-field
-                          :model-value="formatTime(profileStore.currentGroupProfile.last_active_time)"
+                          :model-value="formatTime(profileStore.currentGroupProfile.last_interaction_time)"
                           label="最后活跃时间"
                           variant="outlined"
                           density="comfortable"
@@ -292,7 +295,7 @@
 
                       <v-col cols="12" sm="6">
                         <v-text-field
-                          v-model="editUserProfile.nickname"
+                          v-model="editUserProfile.user_name"
                           label="昵称"
                           variant="outlined"
                           density="comfortable"
@@ -325,9 +328,9 @@
                         />
                       </v-col>
 
-                      <v-col cols="12" v-if="profileStore.currentUserProfile.last_active_time">
+                      <v-col cols="12" v-if="profileStore.currentUserProfile.last_interaction_time">
                         <v-text-field
-                          :model-value="formatTime(profileStore.currentUserProfile.last_active_time)"
+                          :model-value="formatTime(profileStore.currentUserProfile.last_interaction_time)"
                           label="最后活跃时间"
                           variant="outlined"
                           density="comfortable"

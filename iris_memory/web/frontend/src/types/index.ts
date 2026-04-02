@@ -76,20 +76,20 @@ export interface L1ListResponse {
 export interface GroupProfile {
   group_id: string
   group_name?: string
-  atmosphere?: string
+  atmosphere_tags?: string[]
   active_users?: string[]
-  topics?: string[]
+  interests?: string[]
   member_count?: number
-  last_active_time?: string
+  last_interaction_time?: string
 }
 
 // 用户画像
 export interface UserProfile {
   user_id: string
-  nickname?: string
+  user_name?: string
   interests?: string[]
   personality_tags?: string[]
-  last_active_time?: string
+  last_interaction_time?: string
 }
 
 // 群聊列表项
