@@ -590,11 +590,114 @@ class L2MemoryAdapter(Component):
                 "total_count": 0,
                 "group_count": 0
             }
+    
+    async def delete_by_group(self, group_id: str) -> int:
+        """删除指定群聊的所有记忆
+        
+        Args:
+            group_id: 群聊ID
+        
+        Returns:
+            删除的记忆数量
+        """
+        if not self._is_available:
+            return 0
         
         try:
             loop = asyncio.get_event_loop()
             
-            # 获取所有记忆
+            results = await loop.run_in_executor(
+                None,
+                lambda: self._collection.get(
+                    where={"group_id": group_id}
+                )
+            )
+            
+            if not results["ids"]:
+                logger.debug(f"群聊 {group_id} 没有记忆记录")
+                return 0
+            
+            memory_ids = results["ids"]
+            await loop.run_in_executor(
+                None,
+                lambda: self._collection.delete(ids=memory_ids)
+            )
+            
+            logger.info(f"已删除群聊 {group_id} 的 {len(memory_ids)} 条记忆")
+            return len(memory_ids)
+            
+        except Exception as e:
+            logger.error(f"删除群聊记忆失败: {e}", exc_info=True)
+            return 0
+    
+    async def delete_by_user(self, user_id: str, group_id: Optional[str] = None) -> int:
+        """删除指定用户的记忆
+        
+        从 metadata 的 active_users 字段中筛选包含该用户的记忆。
+        
+        Args:
+            user_id: 用户ID
+            group_id: 群聊ID（可选，不指定则删除所有群聊中该用户的记忆）
+        
+        Returns:
+            删除的记忆数量
+        """
+        if not self._is_available:
+            return 0
+        
+        try:
+            loop = asyncio.get_event_loop()
+            
+            if group_id:
+                results = await loop.run_in_executor(
+                    None,
+                    lambda: self._collection.get(
+                        where={"group_id": group_id}
+                    )
+                )
+            else:
+                results = await loop.run_in_executor(
+                    None,
+                    lambda: self._collection.get()
+                )
+            
+            if not results["ids"]:
+                return 0
+            
+            memory_ids_to_delete = []
+            for i, metadata in enumerate(results["metadatas"]):
+                active_users = metadata.get("active_users", "")
+                if user_id in active_users.split(","):
+                    memory_ids_to_delete.append(results["ids"][i])
+            
+            if not memory_ids_to_delete:
+                logger.debug(f"用户 {user_id} 没有记忆记录")
+                return 0
+            
+            await loop.run_in_executor(
+                None,
+                lambda: self._collection.delete(ids=memory_ids_to_delete)
+            )
+            
+            logger.info(f"已删除用户 {user_id} 的 {len(memory_ids_to_delete)} 条记忆")
+            return len(memory_ids_to_delete)
+            
+        except Exception as e:
+            logger.error(f"删除用户记忆失败: {e}", exc_info=True)
+            return 0
+    
+    async def delete_all(self) -> int:
+        """删除所有记忆
+        
+        Returns:
+            删除的记忆数量
+        """
+        if not self._is_available:
+            return 0
+        
+        try:
+            loop = asyncio.get_event_loop()
+            
             results = await loop.run_in_executor(
                 None,
                 lambda: self._collection.get()
@@ -602,22 +705,19 @@ class L2MemoryAdapter(Component):
             
             total_count = len(results["ids"]) if results["ids"] else 0
             
-            # 统计群聊数量（从 metadata 中提取 group_id）
-            group_ids = set()
-            if results["metadatas"]:
-                for metadata in results["metadatas"]:
-                    group_id = metadata.get("group_id")
-                    if group_id:
-                        group_ids.add(group_id)
+            if total_count == 0:
+                return 0
             
-            return {
-                "total_count": total_count,
-                "group_count": len(group_ids)
-            }
-        
+            await loop.run_in_executor(
+                None,
+                lambda: self._collection.delete(
+                    where={}
+                )
+            )
+            
+            logger.info(f"已删除所有记忆，共 {total_count} 条")
+            return total_count
+            
         except Exception as e:
-            logger.error(f"获取统计信息失败：{e}", exc_info=True)
-            return {
-                "total_count": 0,
-                "group_count": 0
-            }
+            logger.error(f"删除所有记忆失败: {e}", exc_info=True)
+            return 0

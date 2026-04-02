@@ -311,14 +311,94 @@ class L1Buffer(Component):
             queue.clear()
             logger.info(f"已清空队列：{queue_key}，原 {old_size} 条消息")
     
-    def clear_all(self) -> None:
+    def clear_all(self) -> int:
         """清空所有队列
         
         用于人格切换时清空所有记忆。
+        
+        Returns:
+            删除的消息总数
         """
         total_messages = sum(len(q) for q in self._queues.values())
         self._queues.clear()
         logger.info(f"已清空所有队列，共 {total_messages} 条消息")
+        return total_messages
+    
+    def clear_by_user(self, user_id: str, group_id: Optional[str] = None) -> int:
+        """清空指定用户的消息
+        
+        从队列中删除指定用户发送的消息。
+        
+        Args:
+            user_id: 用户ID
+            group_id: 群聊ID（可选，不指定则删除所有群聊中该用户的消息）
+        
+        Returns:
+            删除的消息数量
+        """
+        total_removed = 0
+        
+        if group_id:
+            queue_key = self._get_queue_key(group_id)
+            if queue_key in self._queues:
+                queue = self._queues[queue_key]
+                removed = self._remove_user_messages(queue, user_id)
+                total_removed += removed
+                logger.info(f"已从队列 {queue_key} 删除用户 {user_id} 的 {removed} 条消息")
+        else:
+            for queue_key, queue in self._queues.items():
+                removed = self._remove_user_messages(queue, user_id)
+                total_removed += removed
+                if removed > 0:
+                    logger.info(f"已从队列 {queue_key} 删除用户 {user_id} 的 {removed} 条消息")
+        
+        return total_removed
+    
+    def clear_by_group(self, group_id: str) -> int:
+        """清空指定群聊的队列
+        
+        Args:
+            group_id: 群聊ID
+        
+        Returns:
+            删除的消息数量
+        """
+        queue_key = self._get_queue_key(group_id)
+        
+        if queue_key in self._queues:
+            queue = self._queues[queue_key]
+            old_size = len(queue)
+            queue.clear()
+            logger.info(f"已清空队列：{queue_key}，原 {old_size} 条消息")
+            return old_size
+        
+        return 0
+    
+    def _remove_user_messages(self, queue: MessageQueue, user_id: str) -> int:
+        """从队列中删除指定用户的消息
+        
+        Args:
+            queue: 消息队列
+            user_id: 用户ID
+        
+        Returns:
+            删除的消息数量
+        """
+        new_messages = deque()
+        removed_count = 0
+        removed_tokens = 0
+        
+        for msg in queue.messages:
+            if msg.source == user_id:
+                removed_count += 1
+                removed_tokens += msg.token_count
+            else:
+                new_messages.append(msg)
+        
+        queue.messages = new_messages
+        queue.total_tokens -= removed_tokens
+        
+        return removed_count
     
     async def _check_and_summarize(self, group_id: str) -> None:
         """检查并触发总结

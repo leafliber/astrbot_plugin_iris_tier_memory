@@ -358,6 +358,156 @@ class L3KGAdapter(Component):
             logger.error(f"淘汰节点失败：{e}")
             return 0
     
+    async def delete_by_group(self, group_id: str) -> int:
+        """删除指定群聊的所有节点和边
+        
+        Args:
+            group_id: 群聊ID
+        
+        Returns:
+            删除的节点数量
+        """
+        if not self._is_available:
+            return 0
+        
+        try:
+            count_result = self._conn.execute("""
+                MATCH (e:Entity)
+                WHERE e.group_id = $group_id
+                RETURN COUNT(e) as count
+            """, {"group_id": group_id})
+            
+            node_count = count_result.get_next()[0]
+            
+            if node_count == 0:
+                logger.debug(f"群聊 {group_id} 没有知识图谱节点")
+                return 0
+            
+            self._conn.execute("""
+                MATCH ()-[r:Related]-(e:Entity)
+                WHERE e.group_id = $group_id
+                DELETE r
+            """, {"group_id": group_id})
+            
+            self._conn.execute("""
+                MATCH (e:Entity)
+                WHERE e.group_id = $group_id
+                DELETE e
+            """, {"group_id": group_id})
+            
+            logger.info(f"已删除群聊 {group_id} 的 {node_count} 个节点及其关联边")
+            return node_count
+            
+        except Exception as e:
+            logger.error(f"删除群聊知识图谱失败: {e}", exc_info=True)
+            return 0
+    
+    async def delete_all(self) -> int:
+        """删除所有节点和边
+        
+        Returns:
+            删除的节点数量
+        """
+        if not self._is_available:
+            return 0
+        
+        try:
+            count_result = self._conn.execute("""
+                MATCH (e:Entity)
+                RETURN COUNT(e) as count
+            """)
+            
+            node_count = count_result.get_next()[0]
+            
+            if node_count == 0:
+                return 0
+            
+            self._conn.execute("""
+                MATCH ()-[r:Related]->()
+                DELETE r
+            """)
+            
+            self._conn.execute("""
+                MATCH (e:Entity)
+                DELETE e
+            """)
+            
+            logger.info(f"已删除所有知识图谱节点，共 {node_count} 个")
+            return node_count
+            
+        except Exception as e:
+            logger.error(f"删除所有知识图谱失败: {e}", exc_info=True)
+            return 0
+    
+    async def delete_by_user(self, user_id: str, group_id: Optional[str] = None) -> int:
+        """删除与指定用户相关的节点
+        
+        注意：由于知识图谱节点没有直接的 user_id 字段，
+        此方法通过节点名称匹配用户ID来删除。
+        这是一个近似实现，可能不精确。
+        
+        Args:
+            user_id: 用户ID
+            group_id: 群聊ID（可选）
+        
+        Returns:
+            删除的节点数量
+        """
+        if not self._is_available:
+            return 0
+        
+        try:
+            if group_id:
+                count_result = self._conn.execute("""
+                    MATCH (e:Entity)
+                    WHERE e.group_id = $group_id AND e.name = $user_id
+                    RETURN COUNT(e) as count
+                """, {"group_id": group_id, "user_id": user_id})
+            else:
+                count_result = self._conn.execute("""
+                    MATCH (e:Entity)
+                    WHERE e.name = $user_id
+                    RETURN COUNT(e) as count
+                """, {"user_id": user_id})
+            
+            node_count = count_result.get_next()[0]
+            
+            if node_count == 0:
+                logger.debug(f"用户 {user_id} 没有知识图谱节点")
+                return 0
+            
+            if group_id:
+                self._conn.execute("""
+                    MATCH ()-[r:Related]-(e:Entity)
+                    WHERE e.group_id = $group_id AND e.name = $user_id
+                    DELETE r
+                """, {"group_id": group_id, "user_id": user_id})
+                
+                self._conn.execute("""
+                    MATCH (e:Entity)
+                    WHERE e.group_id = $group_id AND e.name = $user_id
+                    DELETE e
+                """, {"group_id": group_id, "user_id": user_id})
+            else:
+                self._conn.execute("""
+                    MATCH ()-[r:Related]-(e:Entity)
+                    WHERE e.name = $user_id
+                    DELETE r
+                """, {"user_id": user_id})
+                
+                self._conn.execute("""
+                    MATCH (e:Entity)
+                    WHERE e.name = $user_id
+                    DELETE e
+                """, {"user_id": user_id})
+            
+            logger.info(f"已删除用户 {user_id} 的 {node_count} 个知识图谱节点")
+            return node_count
+            
+        except Exception as e:
+            logger.error(f"删除用户知识图谱失败: {e}", exc_info=True)
+            return 0
+    
     async def shutdown(self) -> None:
         """关闭数据库连接"""
         if self._conn:
