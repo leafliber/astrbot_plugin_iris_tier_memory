@@ -292,6 +292,12 @@
         "default": 9967,
         "description": "Web 服务器端口",
         "hint": "独立端口，避免与 AstrBot 主端口冲突"
+      },
+      "access_key": {
+        "type": "string",
+        "default": "",
+        "description": "访问密钥",
+        "hint": "留空则无需认证，设置后需要输入密钥才能访问"
       }
     }
   }

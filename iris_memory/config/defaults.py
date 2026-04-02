@@ -94,6 +94,7 @@ class WebConfig:
     enable: bool = True
     host: str = "0.0.0.0"
     port: int = 9967
+    access_key: str = ""
 
 
 @dataclass
