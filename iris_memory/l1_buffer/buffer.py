@@ -157,20 +157,16 @@ class L1Buffer(Component):
     def _get_queue_key(self, group_id: str) -> str:
         """获取队列键
         
-        根据群聊隔离配置决定队列键。
+        L1 缓冲始终按群隔离存储，不受 enable_group_memory_isolation 配置影响。
+        该配置仅控制 L2/L3 的查询是否带群 ID 条件。
         
         Args:
             group_id: 群聊ID
         
         Returns:
-            队列键（隔离模式下为 group_id，否则为 "default"）
+            队列键（始终为 group_id）
         """
-        config = get_config()
-        
-        if config.get("isolation_config.enable_group_memory_isolation"):
-            return group_id
-        else:
-            return "default"
+        return group_id
     
     def _get_or_create_queue(self, group_id: str) -> MessageQueue:
         """获取或创建队列

@@ -182,53 +182,30 @@ class TestL1Buffer:
         assert len(buffer._queues) == 0
     
     @pytest.mark.asyncio
-    async def test_group_isolation_enabled(self, mock_config):
-        """测试群聊隔离开启"""
+    async def test_group_isolation_always_enabled(self, mock_config):
+        """测试 L1 缓冲始终按群隔离
+        
+        L1 不受 enable_group_memory_isolation 配置影响，始终分群存储。
+        该配置仅控制 L2/L3 的查询是否带群 ID 条件。
+        """
         with patch('iris_memory.l1_buffer.buffer.get_config') as mock_get_config:
             mock_get_config.return_value.get = Mock(side_effect=lambda key: {
                 "l1_buffer.enable": True,
-                "isolation_config.enable_group_memory_isolation": True
             }.get(key, None))
             
             buffer = L1Buffer()
             await buffer.initialize()
             
-            # 添加消息到不同群聊
             await buffer.add_message("group_123", "user", "测试1", "user_456")
             await buffer.add_message("group_456", "user", "测试2", "user_789")
             
-            # 应该有两个独立的队列
             assert len(buffer._queues) == 2
             
-            # 各队列独立
             context1 = buffer.get_context("group_123")
             context2 = buffer.get_context("group_456")
             
             assert len(context1) == 1
             assert len(context2) == 1
-    
-    @pytest.mark.asyncio
-    async def test_group_isolation_disabled(self, mock_config):
-        """测试群聊隔离关闭"""
-        with patch('iris_memory.l1_buffer.buffer.get_config') as mock_get_config:
-            mock_get_config.return_value.get = Mock(side_effect=lambda key: {
-                "l1_buffer.enable": True,
-                "isolation_config.enable_group_memory_isolation": False
-            }.get(key, None))
-            
-            buffer = L1Buffer()
-            await buffer.initialize()
-            
-            # 添加消息到不同群聊
-            await buffer.add_message("group_123", "user", "测试1", "user_456")
-            await buffer.add_message("group_456", "user", "测试2", "user_789")
-            
-            # 应该只有一个全局队列
-            assert len(buffer._queues) == 1
-            
-            # 所有消息共享
-            context = buffer.get_context("group_123")
-            assert len(context) == 2
     
     @pytest.mark.asyncio
     async def test_get_queue_stats(self, mock_config):
