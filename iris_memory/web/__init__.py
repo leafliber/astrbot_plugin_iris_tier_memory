@@ -43,13 +43,17 @@ def _add_cors_headers(response: Response, origins: str) -> Response:
     Returns:
         添加了 CORS 头的响应对象
     """
-    # 处理多源配置
-    origin_list = [o.strip() for o in origins.split(',')]
     request_origin = request.headers.get('Origin', '')
     
-    # 判断是否允许该源
-    if origins == '*' or request_origin in origin_list:
-        response.headers['Access-Control-Allow-Origin'] = request_origin if request_origin else '*'
+    if origins == '*':
+        if request_origin:
+            response.headers['Access-Control-Allow-Origin'] = request_origin
+        else:
+            response.headers['Access-Control-Allow-Origin'] = '*'
+    else:
+        origin_list = [o.strip() for o in origins.split(',')]
+        if request_origin in origin_list:
+            response.headers['Access-Control-Allow-Origin'] = request_origin
     
     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, PATCH, OPTIONS'
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-CSRF-Token, X-Requested-With'
