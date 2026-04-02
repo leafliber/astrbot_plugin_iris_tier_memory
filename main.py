@@ -171,7 +171,9 @@ class IrisTierMemoryPlugin(Star):
         """iris_mem 指令入口 - 管理员专用"""
         await self._ensure_initialized()
         if self.component_manager:
-            await execute_command(event)
+            result = await execute_command(event)
+            if result:
+                yield event.plain_result(result)
     
     @filter.on_llm_request()
     async def on_llm_request(self, event: AstrMessageEvent, req) -> None:

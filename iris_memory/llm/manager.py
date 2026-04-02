@@ -194,17 +194,17 @@ class LLMManager(Component):
         self,
         module: str,
         provider_id: Optional[str]
-    ) -> str:
+    ) -> Optional[str]:
         """解析要使用的 Provider ID
         
-        优先级：参数 > 模块配置 > 默认（空字符串）
+        优先级：参数 > 模块配置 > 默认（None，由 AstrBot 处理）
         
         Args:
             module: 模块名
             provider_id: 参数传入的 provider_id
         
         Returns:
-            实际使用的 Provider ID
+            实际使用的 Provider ID，None 表示使用 AstrBot 默认
         """
         if provider_id:
             return provider_id
@@ -226,7 +226,7 @@ class LLMManager(Component):
             if configured_provider:
                 return configured_provider
         
-        return ""
+        return None
     
     def _truncate_text(self, text: str, max_length: int) -> str:
         """截断文本
