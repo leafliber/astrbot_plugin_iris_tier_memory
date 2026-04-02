@@ -83,10 +83,14 @@ export interface L1ListResponse {
 export interface GroupProfile {
   group_id: string
   group_name?: string
-  atmosphere_tags?: string[]
+  current_topic?: string
   active_users?: string[]
   interests?: string[]
-  member_count?: number
+  active_time_slots?: string[]
+  atmosphere_tags?: string[]
+  common_expressions?: string[]
+  long_term_tags?: string[]
+  blacklist_topics?: string[]
   last_interaction_time?: string
 }
 
@@ -94,8 +98,16 @@ export interface GroupProfile {
 export interface UserProfile {
   user_id: string
   user_name?: string
-  interests?: string[]
+  historical_names?: string[]
+  current_emotional_state?: string
   personality_tags?: string[]
+  interests?: string[]
+  occupation?: string
+  language_style?: string
+  bot_relationship?: string
+  important_dates?: Array<{ date: string; description: string }>
+  taboo_topics?: string[]
+  important_events?: string[]
   last_interaction_time?: string
 }
 

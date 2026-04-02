@@ -100,7 +100,7 @@
                     <v-row>
                       <v-col cols="12" sm="6">
                         <v-text-field
-                          v-model="editGroupProfile.group_id"
+                          :model-value="profileStore.currentGroupProfile.group_id"
                           label="群聊 ID"
                           variant="outlined"
                           density="comfortable"
@@ -110,49 +110,91 @@
 
                       <v-col cols="12" sm="6">
                         <v-text-field
-                          v-model="editGroupProfile.group_name"
+                          :model-value="profileStore.currentGroupProfile.group_name || '-'"
                           label="群聊名称"
                           variant="outlined"
                           density="comfortable"
-                        />
-                      </v-col>
-
-                      <v-col cols="12" sm="6">
-                        <v-combobox
-                          v-model="editGroupProfile.atmosphere_tags"
-                          label="氛围标签"
-                          variant="outlined"
-                          density="comfortable"
-                          multiple
-                          chips
-                          closable-chips
-                          placeholder="添加氛围标签"
-                        />
-                      </v-col>
-
-                      <v-col cols="12" sm="6">
-                        <v-combobox
-                          v-model="editGroupProfile.interests"
-                          label="兴趣标签"
-                          variant="outlined"
-                          density="comfortable"
-                          multiple
-                          chips
-                          closable-chips
-                          placeholder="添加兴趣标签"
+                          readonly
                         />
                       </v-col>
 
                       <v-col cols="12">
-                        <v-combobox
-                          v-model="editGroupProfile.active_users"
+                        <v-text-field
+                          :model-value="profileStore.currentGroupProfile.current_topic || '-'"
+                          label="当前话题"
+                          variant="outlined"
+                          density="comfortable"
+                          readonly
+                        />
+                      </v-col>
+
+                      <v-col cols="12">
+                        <v-text-field
+                          :model-value="profileStore.currentGroupProfile.atmosphere_tags?.join(', ') || '-'"
+                          label="氛围标签"
+                          variant="outlined"
+                          density="comfortable"
+                          readonly
+                        />
+                      </v-col>
+
+                      <v-col cols="12">
+                        <v-text-field
+                          :model-value="profileStore.currentGroupProfile.interests?.join(', ') || '-'"
+                          label="兴趣标签"
+                          variant="outlined"
+                          density="comfortable"
+                          readonly
+                        />
+                      </v-col>
+
+                      <v-col cols="12">
+                        <v-text-field
+                          :model-value="profileStore.currentGroupProfile.active_users?.join(', ') || '-'"
                           label="活跃用户"
                           variant="outlined"
                           density="comfortable"
-                          multiple
-                          chips
-                          closable-chips
-                          placeholder="添加活跃用户"
+                          readonly
+                        />
+                      </v-col>
+
+                      <v-col cols="12">
+                        <v-text-field
+                          :model-value="profileStore.currentGroupProfile.active_time_slots?.join(', ') || '-'"
+                          label="活跃时段"
+                          variant="outlined"
+                          density="comfortable"
+                          readonly
+                        />
+                      </v-col>
+
+                      <v-col cols="12">
+                        <v-text-field
+                          :model-value="profileStore.currentGroupProfile.common_expressions?.join(', ') || '-'"
+                          label="常用语/梗"
+                          variant="outlined"
+                          density="comfortable"
+                          readonly
+                        />
+                      </v-col>
+
+                      <v-col cols="12">
+                        <v-text-field
+                          :model-value="profileStore.currentGroupProfile.long_term_tags?.join(', ') || '-'"
+                          label="核心特征标签"
+                          variant="outlined"
+                          density="comfortable"
+                          readonly
+                        />
+                      </v-col>
+
+                      <v-col cols="12">
+                        <v-text-field
+                          :model-value="profileStore.currentGroupProfile.blacklist_topics?.join(', ') || '-'"
+                          label="禁忌话题"
+                          variant="outlined"
+                          density="comfortable"
+                          readonly
                         />
                       </v-col>
 
@@ -166,19 +208,6 @@
                         />
                       </v-col>
                     </v-row>
-
-                    <v-divider class="my-4" />
-
-                    <div class="d-flex justify-end">
-                      <v-btn
-                        color="primary"
-                        :loading="savingGroup"
-                        @click="handleSaveGroupProfile"
-                      >
-                        <v-icon icon="mdi-content-save" class="mr-1" />
-                        保存修改
-                      </v-btn>
-                    </div>
                   </div>
 
                   <div v-else class="text-center text-medium-emphasis py-8">
@@ -285,7 +314,7 @@
                     <v-row>
                       <v-col cols="12" sm="6">
                         <v-text-field
-                          v-model="editUserProfile.user_id"
+                          :model-value="profileStore.currentUserProfile.user_id"
                           label="用户 ID"
                           variant="outlined"
                           density="comfortable"
@@ -295,36 +324,101 @@
 
                       <v-col cols="12" sm="6">
                         <v-text-field
-                          v-model="editUserProfile.user_name"
+                          :model-value="profileStore.currentUserProfile.user_name || '-'"
                           label="昵称"
                           variant="outlined"
                           density="comfortable"
+                          readonly
                         />
                       </v-col>
 
                       <v-col cols="12">
-                        <v-combobox
-                          v-model="editUserProfile.interests"
-                          label="兴趣标签"
+                        <v-text-field
+                          :model-value="profileStore.currentUserProfile.historical_names?.join(', ') || '-'"
+                          label="历史曾用名"
                           variant="outlined"
                           density="comfortable"
-                          multiple
-                          chips
-                          closable-chips
-                          placeholder="添加兴趣标签"
+                          readonly
                         />
                       </v-col>
 
                       <v-col cols="12">
-                        <v-combobox
-                          v-model="editUserProfile.personality_tags"
+                        <v-text-field
+                          :model-value="profileStore.currentUserProfile.current_emotional_state || '-'"
+                          label="当前情感状态"
+                          variant="outlined"
+                          density="comfortable"
+                          readonly
+                        />
+                      </v-col>
+
+                      <v-col cols="12">
+                        <v-text-field
+                          :model-value="profileStore.currentUserProfile.personality_tags?.join(', ') || '-'"
                           label="性格标签"
                           variant="outlined"
                           density="comfortable"
-                          multiple
-                          chips
-                          closable-chips
-                          placeholder="添加性格标签"
+                          readonly
+                        />
+                      </v-col>
+
+                      <v-col cols="12">
+                        <v-text-field
+                          :model-value="profileStore.currentUserProfile.interests?.join(', ') || '-'"
+                          label="兴趣爱好"
+                          variant="outlined"
+                          density="comfortable"
+                          readonly
+                        />
+                      </v-col>
+
+                      <v-col cols="12">
+                        <v-text-field
+                          :model-value="profileStore.currentUserProfile.occupation || '-'"
+                          label="职业/身份"
+                          variant="outlined"
+                          density="comfortable"
+                          readonly
+                        />
+                      </v-col>
+
+                      <v-col cols="12">
+                        <v-text-field
+                          :model-value="profileStore.currentUserProfile.language_style || '-'"
+                          label="语言风格"
+                          variant="outlined"
+                          density="comfortable"
+                          readonly
+                        />
+                      </v-col>
+
+                      <v-col cols="12">
+                        <v-text-field
+                          :model-value="profileStore.currentUserProfile.bot_relationship || '-'"
+                          label="与Bot关系"
+                          variant="outlined"
+                          density="comfortable"
+                          readonly
+                        />
+                      </v-col>
+
+                      <v-col cols="12">
+                        <v-text-field
+                          :model-value="profileStore.currentUserProfile.taboo_topics?.join(', ') || '-'"
+                          label="禁忌话题"
+                          variant="outlined"
+                          density="comfortable"
+                          readonly
+                        />
+                      </v-col>
+
+                      <v-col cols="12">
+                        <v-text-field
+                          :model-value="profileStore.currentUserProfile.important_events?.join(', ') || '-'"
+                          label="重要事件"
+                          variant="outlined"
+                          density="comfortable"
+                          readonly
                         />
                       </v-col>
 
@@ -338,19 +432,6 @@
                         />
                       </v-col>
                     </v-row>
-
-                    <v-divider class="my-4" />
-
-                    <div class="d-flex justify-end">
-                      <v-btn
-                        color="primary"
-                        :loading="savingUser"
-                        @click="handleSaveUserProfile"
-                      >
-                        <v-icon icon="mdi-content-save" class="mr-1" />
-                        保存修改
-                      </v-btn>
-                    </div>
                   </div>
 
                   <div v-else class="text-center text-medium-emphasis py-8">
@@ -375,7 +456,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { useProfileStore } from '@/stores'
-import type { GroupProfile, UserProfile } from '@/types'
 
 const profileStore = useProfileStore()
 
@@ -385,10 +465,6 @@ const userSearchQuery = ref('')
 const selectedGroupId = ref<string | null>(null)
 const selectedUserId = ref<string | null>(null)
 const selectedUserGroupId = ref<string | undefined>(undefined)
-const savingGroup = ref(false)
-const savingUser = ref(false)
-const editGroupProfile = ref<Partial<GroupProfile>>({})
-const editUserProfile = ref<Partial<UserProfile>>({})
 
 const filteredGroupList = computed(() => {
   if (!groupSearchQuery.value) return profileStore.groupList
@@ -437,30 +513,6 @@ const loadUserProfile = () => {
   }
 }
 
-const handleSaveGroupProfile = async () => {
-  if (!selectedGroupId.value) return
-  savingGroup.value = true
-  try {
-    await profileStore.updateGroupProfile(selectedGroupId.value, editGroupProfile.value)
-  } catch (error) {
-    console.error('保存失败:', error)
-  } finally {
-    savingGroup.value = false
-  }
-}
-
-const handleSaveUserProfile = async () => {
-  if (!selectedUserId.value) return
-  savingUser.value = true
-  try {
-    await profileStore.updateUserProfile(selectedUserId.value, editUserProfile.value, selectedUserGroupId.value)
-  } catch (error) {
-    console.error('保存失败:', error)
-  } finally {
-    savingUser.value = false
-  }
-}
-
 const formatTime = (timestamp?: string): string => {
   if (!timestamp) return ''
   try {
@@ -482,22 +534,6 @@ watch(selectedUserId, (newId) => {
     profileStore.fetchUserProfile(newId, selectedUserGroupId.value)
   }
 }, { immediate: true })
-
-watch(() => profileStore.currentGroupProfile, (newProfile) => {
-  if (newProfile) {
-    editGroupProfile.value = { ...newProfile }
-  } else {
-    editGroupProfile.value = {}
-  }
-}, { immediate: true, deep: true })
-
-watch(() => profileStore.currentUserProfile, (newProfile) => {
-  if (newProfile) {
-    editUserProfile.value = { ...newProfile }
-  } else {
-    editUserProfile.value = {}
-  }
-}, { immediate: true, deep: true })
 
 onMounted(() => {
   loadGroupList()
