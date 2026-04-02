@@ -44,6 +44,8 @@ class CommandParser:
         "-g": ("group", True),
         "--all": ("all", True),
         "-a": ("all", True),
+        "—group": ("group", True),
+        "—all": ("all", True),
     }
     
     @classmethod
@@ -58,14 +60,16 @@ class CommandParser:
         """
         text = text.strip()
         
-        if not text.startswith(cls.PREFIX):
+        iris_mem_index = text.lower().find(cls.PREFIX)
+        if iris_mem_index == -1:
             return ParsedCommand(
                 module="",
                 is_valid=False,
                 error_message="不是有效的 iris_mem 指令"
             )
         
-        parts = text[len(cls.PREFIX):].strip().split()
+        text_after_prefix = text[iris_mem_index + len(cls.PREFIX):].strip()
+        parts = text_after_prefix.split()
         
         if not parts:
             return ParsedCommand(
@@ -84,7 +88,7 @@ class CommandParser:
         if remaining:
             first_arg = remaining[0].lower()
             
-            if not first_arg.startswith("-") and not first_arg.startswith("@"):
+            if not first_arg.startswith("-") and not first_arg.startswith("—") and not first_arg.startswith("@"):
                 sub_command = first_arg
                 remaining = remaining[1:]
         
