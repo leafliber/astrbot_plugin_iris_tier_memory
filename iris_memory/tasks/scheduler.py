@@ -11,6 +11,7 @@ Features:
 """
 
 import asyncio
+import random
 from typing import Dict, Optional, Callable, Awaitable, TYPE_CHECKING
 from datetime import datetime
 
@@ -160,6 +161,7 @@ class TaskScheduler(Component):
         """周期性任务包装器
         
         负责循环调度、错误捕获、日志记录。
+        首次执行会在 0 到 interval_hours 之间随机延迟，避免多实例同时启动时任务重叠。
         
         Args:
             task_name: 任务名称
@@ -168,9 +170,12 @@ class TaskScheduler(Component):
         """
         logger.info(f"周期性任务 {task_name} 已启动")
         
+        initial_delay = random.uniform(0, interval_hours)
+        logger.info(f"任务 {task_name} 首次执行将在 {initial_delay:.2f} 小时后进行")
+        await asyncio.sleep(initial_delay * 3600)
+        
         while self._running:
             try:
-                # 执行任务
                 logger.debug(f"开始执行任务：{task_name}")
                 start_time = datetime.now()
                 
@@ -186,7 +191,6 @@ class TaskScheduler(Component):
             except Exception as e:
                 logger.error(f"任务 {task_name} 执行失败：{e}", exc_info=True)
             
-            # 等待下一次执行
             await asyncio.sleep(interval_hours * 3600)
         
         logger.info(f"周期性任务 {task_name} 已停止")

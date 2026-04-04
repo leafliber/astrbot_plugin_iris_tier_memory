@@ -72,27 +72,23 @@ class TestTaskScheduler:
         """测试周期性任务执行"""
         await scheduler.initialize()
         
-        # 创建模拟任务函数
         call_count = 0
         
         async def task_func():
             nonlocal call_count
             call_count += 1
         
-        # 注册任务（短间隔以便测试）
-        scheduler.register_periodic_task(
-            task_name="test_task",
-            coro_func=task_func,
-            interval_hours=0.001  # 3.6 秒
-        )
+        with patch("iris_memory.tasks.scheduler.random.uniform", return_value=0.0):
+            scheduler.register_periodic_task(
+                task_name="test_task",
+                coro_func=task_func,
+                interval_hours=0.001
+            )
+            
+            await asyncio.sleep(0.5)
         
-        # 等待任务执行
-        await asyncio.sleep(0.5)
-        
-        # 验证任务被执行
         assert call_count >= 1
         
-        # 清理
         await scheduler.shutdown()
     
     @pytest.mark.asyncio
@@ -100,24 +96,20 @@ class TestTaskScheduler:
         """测试任务错误处理"""
         await scheduler.initialize()
         
-        # 创建会抛出异常的任务函数
         async def failing_task():
             raise RuntimeError("Test error")
         
-        # 注册任务
-        scheduler.register_periodic_task(
-            task_name="failing_task",
-            coro_func=failing_task,
-            interval_hours=0.001
-        )
+        with patch("iris_memory.tasks.scheduler.random.uniform", return_value=0.0):
+            scheduler.register_periodic_task(
+                task_name="failing_task",
+                coro_func=failing_task,
+                interval_hours=0.001
+            )
+            
+            await asyncio.sleep(0.5)
         
-        # 等待任务执行（不应崩溃）
-        await asyncio.sleep(0.5)
-        
-        # 验证调度器仍在运行
         assert scheduler.is_available is True
         
-        # 清理
         await scheduler.shutdown()
     
     @pytest.mark.asyncio
@@ -178,7 +170,6 @@ class TestTaskScheduler:
         """测试多个任务并行"""
         await scheduler.initialize()
         
-        # 创建多个模拟任务函数
         task1_calls = 0
         task2_calls = 0
         
@@ -190,16 +181,46 @@ class TestTaskScheduler:
             nonlocal task2_calls
             task2_calls += 1
         
-        # 注册两个任务
-        scheduler.register_periodic_task("task1", task_func1, 0.001)
-        scheduler.register_periodic_task("task2", task_func2, 0.001)
+        with patch("iris_memory.tasks.scheduler.random.uniform", return_value=0.0):
+            scheduler.register_periodic_task("task1", task_func1, 0.001)
+            scheduler.register_periodic_task("task2", task_func2, 0.001)
+            
+            await asyncio.sleep(0.5)
         
-        # 等待任务执行
-        await asyncio.sleep(0.5)
-        
-        # 验证两个任务都被执行
         assert task1_calls >= 1
         assert task2_calls >= 1
         
-        # 清理
+        await scheduler.shutdown()
+    
+    @pytest.mark.asyncio
+    async def test_initial_random_delay(self, scheduler):
+        """测试首次执行的随机延迟"""
+        await scheduler.initialize()
+        
+        call_count = 0
+        call_time = None
+        
+        async def task_func():
+            nonlocal call_count, call_time
+            call_count += 1
+            call_time = asyncio.get_event_loop().time()
+        
+        delay_hours = 0.0001
+        expected_delay_seconds = delay_hours * 3600
+        
+        with patch("iris_memory.tasks.scheduler.random.uniform", return_value=delay_hours):
+            start_time = asyncio.get_event_loop().time()
+            scheduler.register_periodic_task(
+                task_name="test_task",
+                coro_func=task_func,
+                interval_hours=1
+            )
+            
+            await asyncio.sleep(expected_delay_seconds + 0.1)
+        
+        assert call_count == 1
+        assert call_time is not None
+        actual_delay = call_time - start_time
+        assert actual_delay >= expected_delay_seconds * 0.9
+        
         await scheduler.shutdown()
