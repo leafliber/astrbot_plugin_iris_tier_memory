@@ -741,7 +741,7 @@ class L2MemoryAdapter(Component):
             await loop.run_in_executor(
                 None,
                 lambda: self._collection.delete(
-                    where={}
+                    ids=results["ids"]
                 )
             )
             
