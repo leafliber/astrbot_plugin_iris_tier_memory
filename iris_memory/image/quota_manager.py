@@ -49,8 +49,8 @@ class ImageQuotaManager(Component):
         Args:
             storage: KV 存储适配器（实现 KVStorage 协议的对象）
         """
+        super().__init__()
         self._storage = storage
-        self._is_available = False
         self._lock = asyncio.Lock()
         self._quota_status: QuotaStatus | None = None
     
@@ -78,7 +78,7 @@ class ImageQuotaManager(Component):
     
     async def shutdown(self) -> None:
         """关闭配额管理器"""
-        self._is_available = False
+        self._reset_state()
         logger.info("图片解析配额管理器已关闭")
     
     async def _load_quota_status(self) -> None:

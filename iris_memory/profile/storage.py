@@ -44,8 +44,8 @@ class ProfileStorage(Component):
         Args:
             storage: KV 存储适配器（实现 KVStorage 协议的对象）
         """
+        super().__init__()
         self._storage = storage
-        self._is_available = False
     
     @property
     def name(self) -> str:

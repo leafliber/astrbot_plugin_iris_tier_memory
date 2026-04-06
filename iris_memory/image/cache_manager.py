@@ -45,8 +45,8 @@ class ImageCacheManager(Component):
         Args:
             storage: KV 存储适配器（实现 KVStorage 协议的对象）
         """
+        super().__init__()
         self._storage = storage
-        self._is_available = False
         self._lock = asyncio.Lock()
         self._cache: Dict[str, ImageParseCache] = {}
     
