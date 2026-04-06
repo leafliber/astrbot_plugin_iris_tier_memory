@@ -10,8 +10,10 @@ Iris Tier Memory - 组件初始化框架
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Optional, Tuple, List, Dict
 import asyncio
+import re
 
 from .logger import get_logger
 
@@ -19,8 +21,43 @@ logger = get_logger("components")
 
 
 # ============================================================================
+# 枚举定义
+# ============================================================================
+
+class ComponentStatus(Enum):
+    """组件初始化状态"""
+    PENDING = "pending"
+    INITIALIZING = "initializing"
+    AVAILABLE = "available"
+    UNAVAILABLE = "unavailable"
+
+
+class ErrorType(Enum):
+    """错误类型分类"""
+    DISABLED = "disabled"
+    DEPENDENCY_MISSING = "dependency_missing"
+    CONNECTION_FAILED = "connection_failed"
+    OTHER = "other"
+
+
+# ============================================================================
 # 数据类定义
 # ============================================================================
+
+@dataclass
+class ComponentState:
+    """单个组件的详细状态"""
+    status: ComponentStatus = ComponentStatus.PENDING
+    error: Optional[str] = None
+    error_type: Optional[ErrorType] = None
+
+    def to_dict(self) -> Dict:
+        return {
+            "status": self.status.value,
+            "error": self.error,
+            "error_type": self.error_type.value if self.error_type else None
+        }
+
 
 @dataclass
 class SystemStatus:
@@ -33,6 +70,8 @@ class SystemStatus:
     
     Attributes:
         _availability: 模块可用性字典 {module_name: bool}
+        _states: 组件详细状态字典 {module_name: ComponentState}
+        _global_status: 全局初始化状态
     
     Examples:
         >>> status = SystemStatus()
@@ -45,6 +84,8 @@ class SystemStatus:
     """
     
     _availability: Dict[str, bool] = field(default_factory=dict)
+    _states: Dict[str, ComponentState] = field(default_factory=dict)
+    _global_status: ComponentStatus = ComponentStatus.PENDING
     
     def register_module(self, module_name: str, default_available: bool = False) -> None:
         """注册模块
@@ -54,6 +95,8 @@ class SystemStatus:
             default_available: 默认是否可用
         """
         self._availability[module_name] = default_available
+        if module_name not in self._states:
+            self._states[module_name] = ComponentState()
     
     def set_available(self, module_name: str, available: bool = True) -> None:
         """设置模块可用性
@@ -64,6 +107,28 @@ class SystemStatus:
         """
         if module_name in self._availability:
             self._availability[module_name] = available
+        if module_name in self._states:
+            self._states[module_name].status = ComponentStatus.AVAILABLE if available else ComponentStatus.UNAVAILABLE
+    
+    def set_state(self, module_name: str, state: ComponentState) -> None:
+        """设置组件详细状态
+        
+        Args:
+            module_name: 模块名称
+            state: 组件状态
+        """
+        self._states[module_name] = state
+    
+    def get_state(self, module_name: str) -> ComponentState:
+        """获取组件状态
+        
+        Args:
+            module_name: 模块名称
+        
+        Returns:
+            组件状态
+        """
+        return self._states.get(module_name, ComponentState())
     
     def is_module_available(self, module_name: str) -> bool:
         """检查指定模块是否可用
@@ -106,6 +171,19 @@ class SystemStatus:
         """
         return [m for m, available in self._availability.items() if not available]
     
+    def set_global_status(self, status: ComponentStatus) -> None:
+        """设置全局初始化状态
+        
+        Args:
+            status: 全局状态
+        """
+        self._global_status = status
+    
+    @property
+    def global_status(self) -> ComponentStatus:
+        """获取全局初始化状态"""
+        return self._global_status
+    
     def to_dict(self) -> Dict[str, bool]:
         """转换为字典
         
@@ -113,6 +191,20 @@ class SystemStatus:
             状态字典 {module_name_available: bool}
         """
         return {f"{m}_available": available for m, available in self._availability.items()}
+    
+    def to_detailed_dict(self) -> Dict:
+        """转换为详细字典
+        
+        Returns:
+            详细状态字典，包含所有组件状态
+        """
+        return {
+            "components": {
+                name: state.to_dict() 
+                for name, state in self._states.items()
+            },
+            "global_status": self._global_status.value
+        }
 
 
 @dataclass
@@ -135,6 +227,33 @@ class ComponentInitResult:
     name: str
     success: bool
     error_message: Optional[str] = None
+
+
+# ============================================================================
+# 工具函数
+# ============================================================================
+
+def classify_error(error_msg: str) -> ErrorType:
+    """根据错误信息分类错误类型
+    
+    Args:
+        error_msg: 错误信息字符串
+    
+    Returns:
+        错误类型枚举
+    """
+    error_lower = error_msg.lower()
+    
+    if any(keyword in error_lower for keyword in ["disabled", "未启用", "已禁用", "未开启"]):
+        return ErrorType.DISABLED
+    
+    if any(keyword in error_lower for keyword in ["no module named", "import error", "missing", "not found", "未安装", "找不到模块"]):
+        return ErrorType.DEPENDENCY_MISSING
+    
+    if any(keyword in error_lower for keyword in ["connection", "connect", "timeout", "refused", "无法连接", "连接失败", "超时"]):
+        return ErrorType.CONNECTION_FAILED
+    
+    return ErrorType.OTHER
 
 
 # ============================================================================
@@ -167,6 +286,7 @@ class Component(ABC):
     def __init__(self):
         self._is_available: bool = False
         self._init_error: Optional[str] = None
+        self._status: ComponentStatus = ComponentStatus.PENDING
     
     @property
     @abstractmethod
@@ -188,6 +308,15 @@ class Component(ABC):
         return self._is_available
     
     @property
+    def status(self) -> ComponentStatus:
+        """组件初始化状态
+        
+        Returns:
+            组件状态
+        """
+        return self._status
+    
+    @property
     def init_error(self) -> Optional[str]:
         """初始化错误信息
         
@@ -195,6 +324,30 @@ class Component(ABC):
             错误信息字符串，无错误时为 None
         """
         return self._init_error
+    
+    @property
+    def error_type(self) -> Optional[ErrorType]:
+        """错误类型分类
+        
+        Returns:
+            错误类型枚举
+        """
+        if self._init_error:
+            return classify_error(self._init_error)
+        return None
+    
+    def get_state(self) -> ComponentState:
+        """获取组件详细状态
+        
+        Returns:
+            组件状态对象
+        """
+        state = ComponentState(
+            status=self._status,
+            error=self._init_error,
+            error_type=self.error_type
+        )
+        return state
     
     @abstractmethod
     async def initialize(self) -> None:
@@ -212,9 +365,21 @@ class Component(ABC):
     async def shutdown(self) -> None:
         """关闭组件
         
-        子类需实现此方法，完成资源释放（如关闭连接、保存状态等）。
+        子类需实现此方法，完成资源释放（如关闭连接，保存状态等）。
+        
+        Note:
+            子类实现应在最后调用 self._reset_state() 重置状态。
         """
         pass
+    
+    def _reset_state(self) -> None:
+        """重置组件状态
+        
+        在 shutdown 时调用，确保状态一致性。
+        """
+        self._is_available = False
+        self._status = ComponentStatus.PENDING
+        self._init_error = None
 
 
 # ============================================================================
@@ -260,10 +425,10 @@ class ComponentManager:
         """
         self._components = components
         self._initialized = False
+        self._initializing = False
         self._lock = asyncio.Lock()
         self._status = SystemStatus()
         
-        # 动态注册模块
         for component in components:
             self._status.register_module(component.name, default_available=False)
         
@@ -277,6 +442,16 @@ class ComponentManager:
             系统状态对象
         """
         return self._status
+    
+    @property
+    def is_initialized(self) -> bool:
+        """是否已完成初始化"""
+        return self._initialized
+    
+    @property
+    def is_initializing(self) -> bool:
+        """是否正在初始化"""
+        return self._initializing
     
     async def initialize_all(self) -> List[ComponentInitResult]:
         """初始化所有组件
@@ -298,6 +473,12 @@ class ComponentManager:
             if self._initialized:
                 raise RuntimeError("组件已初始化，请勿重复调用")
             
+            self._initializing = True
+            self._status.set_global_status(ComponentStatus.INITIALIZING)
+            
+            for component in self._components:
+                component._status = ComponentStatus.INITIALIZING
+            
             logger.info("开始初始化组件...")
             results: List[ComponentInitResult] = []
             
@@ -305,11 +486,11 @@ class ComponentManager:
                 result = await self._init_single_component(component)
                 results.append(result)
             
-            # 更新系统状态
             self._update_status()
             self._initialized = True
+            self._initializing = False
+            self._status.set_global_status(ComponentStatus.AVAILABLE)
             
-            # 统计结果
             success_count = sum(1 for r in results if r.success)
             logger.info(
                 f"组件初始化完成：{success_count}/{len(results)} 成功，"
@@ -332,16 +513,19 @@ class ComponentManager:
             await component.initialize()
             
             if component.is_available:
+                component._status = ComponentStatus.AVAILABLE
                 logger.info(f"组件 {component.name} 初始化成功")
                 return ComponentInitResult(component.name, True)
             else:
                 error_msg = component.init_error or "初始化后组件不可用"
+                component._status = ComponentStatus.UNAVAILABLE
                 logger.warning(f"组件 {component.name} 初始化失败：{error_msg}")
                 return ComponentInitResult(component.name, False, error_msg)
         
         except Exception as e:
             error_msg = str(e)
             component._init_error = error_msg
+            component._status = ComponentStatus.UNAVAILABLE
             logger.error(f"组件 {component.name} 初始化异常：{error_msg}", exc_info=True)
             return ComponentInitResult(component.name, False, error_msg)
     
@@ -350,12 +534,11 @@ class ComponentManager:
         
         根据各组件的可用性更新 SystemStatus。
         """
-        # 重置为默认状态
         self._status = SystemStatus()
         for component in self._components:
             self._status.register_module(component.name, default_available=False)
+            self._status.set_state(component.name, component.get_state())
         
-        # 更新可用组件
         for component in self._components:
             if component.is_available:
                 self._status.set_available(component.name, True)
@@ -377,7 +560,6 @@ class ComponentManager:
             
             logger.info("开始关闭组件...")
             
-            # 逆序关闭组件
             for component in reversed(self._components):
                 try:
                     logger.debug(f"正在关闭组件：{component.name}")
@@ -386,11 +568,11 @@ class ComponentManager:
                 except Exception as e:
                     logger.error(f"组件 {component.name} 关闭失败：{e}", exc_info=True)
             
-            # 重置状态
             self._status = SystemStatus()
             for component in self._components:
                 self._status.register_module(component.name, default_available=False)
             self._initialized = False
+            self._status.set_global_status(ComponentStatus.PENDING)
             
             logger.info("所有组件已关闭")
     
@@ -423,3 +605,14 @@ class ComponentManager:
             失败组件列表
         """
         return [c for c in self._components if not c.is_available]
+    
+    def get_all_states(self) -> Dict[str, Dict]:
+        """获取所有组件的详细状态
+        
+        Returns:
+            组件状态字典
+        """
+        return {
+            component.name: component.get_state().to_dict()
+            for component in self._components
+        }

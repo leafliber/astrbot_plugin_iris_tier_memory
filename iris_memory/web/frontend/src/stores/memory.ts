@@ -4,26 +4,23 @@ import type { L1Message, L2Memory, KGGraph, KGNode, L1QueueItem } from '@/types'
 import * as memoryApi from '@/api/memory'
 
 export const useMemoryStore = defineStore('memory', () => {
-  // L1 缓冲
   const l1Messages = ref<L1Message[]>([])
   const l1Loading = ref(false)
   const l1Queues = ref<L1QueueItem[]>([])
   const l1QueuesLoading = ref(false)
 
-  // L2 记忆
   const l2Results = ref<L2Memory[]>([])
   const l2Loading = ref(false)
   const l2Query = ref('')
   const l2TotalCount = ref(0)
   const l2GroupCount = ref(0)
 
-  // L3 图谱
   const l3Graph = ref<KGGraph>({ nodes: [], edges: [] })
   const l3StartNode = ref<KGNode | null>(null)
   const l3Loading = ref(false)
   const l3Depth = ref(2)
+  const l3MaxNodes = ref(50)
 
-  // 获取 L1 缓冲
   const fetchL1Messages = async (groupId?: string) => {
     l1Loading.value = true
     try {
@@ -37,7 +34,6 @@ export const useMemoryStore = defineStore('memory', () => {
     }
   }
 
-  // 获取 L1 队列列表
   const fetchL1Queues = async () => {
     l1QueuesLoading.value = true
     try {
@@ -50,7 +46,6 @@ export const useMemoryStore = defineStore('memory', () => {
     }
   }
 
-  // 搜索 L2 记忆
   const searchL2Memory = async (query: string, groupId?: string, topK = 10) => {
     l2Loading.value = true
     l2Query.value = query
@@ -65,7 +60,6 @@ export const useMemoryStore = defineStore('memory', () => {
     }
   }
 
-  // 获取 L2 统计
   const fetchL2Stats = async () => {
     try {
       const stats = await memoryApi.getL2Stats()
@@ -76,13 +70,13 @@ export const useMemoryStore = defineStore('memory', () => {
     }
   }
 
-  // 获取 L3 图谱（支持拓展）
   const fetchL3Graph = async (nodeId?: string) => {
     l3Loading.value = true
     try {
       const response = await memoryApi.getL3Graph({
         node_id: nodeId,
-        depth: l3Depth.value
+        depth: l3Depth.value,
+        max_nodes: l3MaxNodes.value
       })
       l3Graph.value = {
         nodes: response.nodes || [],
@@ -98,13 +92,13 @@ export const useMemoryStore = defineStore('memory', () => {
     }
   }
 
-  // 从指定节点拓展
   const expandFromNode = async (nodeId: string) => {
     l3Loading.value = true
     try {
       const response = await memoryApi.getL3Graph({
         node_id: nodeId,
-        depth: l3Depth.value
+        depth: l3Depth.value,
+        max_nodes: l3MaxNodes.value
       })
       l3Graph.value = {
         nodes: response.nodes || [],
@@ -118,12 +112,14 @@ export const useMemoryStore = defineStore('memory', () => {
     }
   }
 
-  // 设置拓展深度
   const setDepth = (depth: number) => {
     l3Depth.value = depth
   }
 
-  // 清除搜索结果
+  const setMaxNodes = (maxNodes: number) => {
+    l3MaxNodes.value = maxNodes
+  }
+
   const clearL2Results = () => {
     l2Results.value = []
     l2Query.value = ''
@@ -143,6 +139,7 @@ export const useMemoryStore = defineStore('memory', () => {
     l3StartNode,
     l3Loading,
     l3Depth,
+    l3MaxNodes,
     fetchL1Messages,
     fetchL1Queues,
     searchL2Memory,
@@ -150,6 +147,7 @@ export const useMemoryStore = defineStore('memory', () => {
     fetchL3Graph,
     expandFromNode,
     setDepth,
+    setMaxNodes,
     clearL2Results
   }
 })

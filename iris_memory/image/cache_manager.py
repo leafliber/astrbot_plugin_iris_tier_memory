@@ -69,8 +69,8 @@ class ImageCacheManager(Component):
     
     async def shutdown(self) -> None:
         """关闭缓存管理器"""
-        self._is_available = False
         self._cache.clear()
+        self._reset_state()
         logger.info("图片解析缓存管理器已关闭")
     
     def _get_cache_key(self, image_hash: str) -> str:

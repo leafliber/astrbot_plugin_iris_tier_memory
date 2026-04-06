@@ -119,7 +119,7 @@ class L1Buffer(Component):
         清空所有队列，释放资源。
         """
         self.clear_all()
-        self._is_available = False
+        self._reset_state()
         logger.info("L1 缓冲组件已关闭")
     
     def _get_or_create_summarizer(self) -> Optional[Summarizer]:

@@ -66,7 +66,7 @@ class ProfileStorage(Component):
     
     async def shutdown(self) -> None:
         """关闭存储"""
-        self._is_available = False
+        self._reset_state()
         logger.info("画像存储组件已关闭")
     
     async def get_group_profile(

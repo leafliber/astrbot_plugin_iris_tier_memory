@@ -101,7 +101,7 @@ class TaskScheduler(Component):
             await asyncio.gather(*self._tasks.values(), return_exceptions=True)
         
         self._tasks.clear()
-        self._is_available = False
+        self._reset_state()
         
         logger.info("TaskScheduler 已关闭")
     

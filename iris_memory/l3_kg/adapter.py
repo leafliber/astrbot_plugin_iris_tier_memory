@@ -672,5 +672,5 @@ class L3KGAdapter(Component):
             self._conn.close()
         if self._db:
             self._db.close()
-        self._is_available = False
+        self._reset_state()
         logger.info("KuzuDB 已关闭")

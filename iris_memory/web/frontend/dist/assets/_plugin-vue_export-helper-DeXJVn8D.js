@@ -1,0 +1,1 @@
+const t={l1_buffer:"L1 缓冲",l2_memory:"L2 记忆",l3_kg:"L3 图谱",profile:"画像管理",llm_manager:"LLM 管理器"},i={disabled:"已禁用",dependency_missing:"依赖缺失",connection_failed:"连接失败",other:"其他原因"},l={pending:"等待初始化",initializing:"正在初始化",available:"可用",unavailable:"不可用"},s=(e,_)=>{const n=e.__vccOpts||e;for(const[a,o]of _)n[a]=o;return n};export{t as C,i as E,l as S,s as _};

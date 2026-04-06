@@ -80,7 +80,7 @@ class LLMManager(Component):
     
     async def shutdown(self) -> None:
         """关闭管理器"""
-        self._is_available = False
+        self._reset_state()
         logger.info("LLMManager 已关闭")
     
     async def generate(

@@ -1,25 +1,38 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import type { MemoryStats, TokenStatsResponse, KGStats, SystemStats } from '@/types'
+import { ref, computed } from 'vue'
+import type { MemoryStats, TokenStatsResponse, KGStats, SystemStats, ComponentState, ComponentStatus } from '@/types'
 import { getAllStats, getMemoryStats, getTokenStats, getKGStats, getSystemStats } from '@/api/stats'
 
 export const useStatsStore = defineStore('stats', () => {
-  // 加载状态
   const loading = ref(false)
 
-  // 记忆统计
   const memoryStats = ref<MemoryStats | null>(null)
 
-  // Token 统计
   const tokenStats = ref<TokenStatsResponse | null>(null)
 
-  // 图谱统计
   const kgStats = ref<KGStats | null>(null)
 
-  // 系统统计
   const systemStats = ref<SystemStats | null>(null)
 
-  // 获取所有统计（合并请求，推荐）
+  const componentStates = computed(() => systemStats.value?.components || {})
+
+  const globalStatus = computed(() => systemStats.value?.global_status || 'pending')
+
+  const getComponentState = (name: string): ComponentState => {
+    return componentStates.value[name] || { status: 'pending', error: null, error_type: null }
+  }
+
+  const isComponentAvailable = (name: string): boolean => {
+    return getComponentState(name).status === 'available'
+  }
+
+  const isComponentLoading = (name: string): boolean => {
+    const status = getComponentState(name).status
+    return status === 'pending' || status === 'initializing'
+  }
+
+  const isSystemReady = computed(() => globalStatus.value === 'available')
+
   const fetchAllStats = async () => {
     loading.value = true
     try {
@@ -35,7 +48,6 @@ export const useStatsStore = defineStore('stats', () => {
     }
   }
 
-  // 获取记忆统计
   const fetchMemoryStats = async () => {
     try {
       memoryStats.value = await getMemoryStats()
@@ -44,7 +56,6 @@ export const useStatsStore = defineStore('stats', () => {
     }
   }
 
-  // 获取 Token 统计
   const fetchTokenStats = async () => {
     try {
       tokenStats.value = await getTokenStats()
@@ -53,7 +64,6 @@ export const useStatsStore = defineStore('stats', () => {
     }
   }
 
-  // 获取图谱统计
   const fetchKGStats = async () => {
     try {
       kgStats.value = await getKGStats()
@@ -62,7 +72,6 @@ export const useStatsStore = defineStore('stats', () => {
     }
   }
 
-  // 获取系统统计
   const fetchSystemStats = async () => {
     try {
       systemStats.value = await getSystemStats()
@@ -77,6 +86,12 @@ export const useStatsStore = defineStore('stats', () => {
     tokenStats,
     kgStats,
     systemStats,
+    componentStates,
+    globalStatus,
+    getComponentState,
+    isComponentAvailable,
+    isComponentLoading,
+    isSystemReady,
     fetchAllStats,
     fetchMemoryStats,
     fetchTokenStats,

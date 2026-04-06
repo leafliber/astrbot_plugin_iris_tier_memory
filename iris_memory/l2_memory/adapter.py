@@ -161,7 +161,7 @@ class L2MemoryAdapter(Component):
         self._client = None
         self._collection = None
         self._embedding_func = None
-        self._is_available = False
+        self._reset_state()
         logger.info("L2 记忆库已关闭")
     
     # ========================================================================

@@ -1,6 +1,5 @@
 <template>
   <v-app>
-    <!-- 未登录提示 -->
     <v-overlay
       :model-value="!isAuthenticated"
       class="align-center justify-center"
@@ -49,9 +48,7 @@
       </v-card>
     </v-overlay>
 
-    <!-- 主界面 -->
     <template v-if="isAuthenticated">
-      <!-- 导航抽屉 -->
       <v-navigation-drawer v-model="drawer" :rail="rail" permanent>
         <v-list-item
           prepend-icon="mdi-brain"
@@ -83,14 +80,12 @@
         </v-list>
       </v-navigation-drawer>
 
-      <!-- 顶部应用栏 -->
       <v-app-bar color="surface" elevation="0" border="b">
         <v-app-bar-title class="text-h6">
           {{ currentTitle }}
         </v-app-bar-title>
 
         <template #append>
-          <!-- 刷新按钮 -->
           <v-btn
             icon="mdi-refresh"
             variant="text"
@@ -98,7 +93,6 @@
             @click="handleRefresh"
           />
 
-          <!-- 主题切换 -->
           <v-btn
             :icon="darkMode ? 'mdi-weather-sunny' : 'mdi-weather-night'"
             variant="text"
@@ -107,7 +101,6 @@
         </template>
       </v-app-bar>
 
-      <!-- 主内容 -->
       <v-main>
         <v-container fluid class="pa-4">
           <router-view v-slot="{ Component }">
@@ -118,7 +111,6 @@
         </v-container>
       </v-main>
 
-      <!-- 错误提示 -->
       <v-snackbar
         v-model="showError"
         color="error"
@@ -154,7 +146,9 @@ const errorMessage = ref('')
 
 const navItems = [
   { to: '/dashboard', title: '仪表盘', icon: 'mdi-view-dashboard' },
-  { to: '/memory', title: '记忆管理', icon: 'mdi-brain' },
+  { to: '/l1-buffer', title: 'L1 缓冲', icon: 'mdi-lightning-bolt' },
+  { to: '/l2-memory', title: 'L2 记忆', icon: 'mdi-database-search' },
+  { to: '/l3-graph', title: 'L3 图谱', icon: 'mdi-graph' },
   { to: '/profile', title: '画像管理', icon: 'mdi-account-group' },
   { to: '/stats', title: '数据统计', icon: 'mdi-chart-bar' }
 ]

@@ -10,6 +10,26 @@ export interface ApiResponse<T = unknown> {
 }
 
 // ============================================
+// 组件状态类型
+// ============================================
+
+export type ComponentStatus = 'pending' | 'initializing' | 'available' | 'unavailable'
+
+export type ErrorType = 'disabled' | 'dependency_missing' | 'connection_failed' | 'other'
+
+export interface ComponentState {
+  status: ComponentStatus
+  error: string | null
+  error_type: ErrorType | null
+}
+
+export type GlobalStatus = 'pending' | 'initializing' | 'available'
+
+export interface ComponentStates {
+  [key: string]: ComponentState
+}
+
+// ============================================
 // 记忆相关类型
 // ============================================
 
@@ -169,18 +189,10 @@ export interface MemoryStats {
   l3: L3Stats
 }
 
-// 系统组件状态
-export interface SystemComponents {
-  l1_buffer: boolean
-  l2_memory: boolean
-  l3_kg: boolean
-  profile: boolean
-  llm_manager: boolean
-}
-
-// 系统统计
+// 系统统计（新格式）
 export interface SystemStats {
-  components: SystemComponents
+  components: ComponentStates
+  global_status: GlobalStatus
   uptime: number
   version: string
 }
@@ -201,4 +213,31 @@ export interface DashboardData {
   system: SystemStats
   memory: MemoryStats
   token: TokenStatsResponse
+  kg: KGStats
+}
+
+// ============================================
+// 组件状态映射
+// ============================================
+
+export const COMPONENT_DISPLAY_NAMES: Record<string, string> = {
+  l1_buffer: 'L1 缓冲',
+  l2_memory: 'L2 记忆',
+  l3_kg: 'L3 图谱',
+  profile: '画像管理',
+  llm_manager: 'LLM 管理器'
+}
+
+export const ERROR_TYPE_DISPLAY_NAMES: Record<ErrorType, string> = {
+  disabled: '已禁用',
+  dependency_missing: '依赖缺失',
+  connection_failed: '连接失败',
+  other: '其他原因'
+}
+
+export const STATUS_DISPLAY_NAMES: Record<ComponentStatus, string> = {
+  pending: '等待初始化',
+  initializing: '正在初始化',
+  available: '可用',
+  unavailable: '不可用'
 }
