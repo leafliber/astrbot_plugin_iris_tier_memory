@@ -222,8 +222,8 @@ async def get_l3_graph():
     """
     try:
         node_id = request.args.get('node_id')
-        depth = request.args.get('depth', default=2, type=int)
-        max_nodes = request.args.get('max_nodes', default=50, type=int)
+        depth = request.args.get('depth', default=1, type=int)
+        max_nodes = request.args.get('max_nodes', default=20, type=int)
         max_edges = request.args.get('max_edges', default=100, type=int)
         
         manager = get_component_manager()

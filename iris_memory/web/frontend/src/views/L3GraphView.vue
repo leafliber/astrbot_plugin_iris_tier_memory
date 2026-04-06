@@ -69,6 +69,47 @@
                   <v-icon icon="mdi-graph-outline" size="80" class="mb-3" />
                   <div class="text-h6">暂无图谱数据</div>
                 </div>
+                <div
+                  v-if="selectedNode && popupPosition"
+                  class="node-popup"
+                  :style="{ left: popupPosition.x + 'px', top: popupPosition.y + 'px' }"
+                >
+                  <v-card color="surface" variant="elevated" class="popup-card">
+                    <v-card-title class="d-flex align-center text-subtitle-1 pa-3">
+                      <v-icon :icon="getNodeIcon(selectedNode.label)" :color="getTypeColor(selectedNode.label)" class="mr-2" size="small" />
+                      {{ selectedNode.name || selectedNode.id }}
+                      <v-spacer />
+                      <v-btn
+                        icon="mdi-close"
+                        variant="text"
+                        size="x-small"
+                        density="compact"
+                        @click="closePopup"
+                      />
+                    </v-card-title>
+                    <v-card-text class="pa-3 pt-0">
+                      <div class="text-caption mb-1">
+                        <span class="text-medium-emphasis">类型：</span>{{ selectedNode.label }}
+                      </div>
+                      <div class="text-caption mb-1">
+                        <span class="text-medium-emphasis">ID：</span>{{ selectedNode.id }}
+                      </div>
+                      <div class="text-caption mb-2">
+                        <span class="text-medium-emphasis">置信度：</span>{{ (selectedNode.confidence * 100).toFixed(0) }}%
+                      </div>
+                      <v-btn
+                        color="primary"
+                        size="small"
+                        block
+                        :loading="memoryStore.l3Loading"
+                        @click="expandFromSelected"
+                      >
+                        <v-icon icon="mdi-arrow-expand" class="mr-1" />
+                        以此节点展开
+                      </v-btn>
+                    </v-card-text>
+                  </v-card>
+                </div>
               </div>
             </v-card-text>
           </v-card>
@@ -84,23 +125,22 @@
               <div class="mb-4">
                 <div class="text-caption text-medium-emphasis mb-1">拓展深度</div>
                 <v-slider
-                  v-model="expandDepth"
+                  v-model="memoryStore.l3Depth"
                   :min="1"
                   :max="3"
                   :step="1"
                   thumb-label
                   ticks
-                  @update:model-value="onDepthChange"
                 />
               </div>
 
               <div class="mb-4">
                 <div class="text-caption text-medium-emphasis mb-1">最大节点数</div>
                 <v-slider
-                  v-model="maxNodes"
+                  v-model="memoryStore.l3MaxNodes"
                   :min="10"
-                  :max="100"
-                  :step="10"
+                  :max="50"
+                  :step="5"
                   thumb-label
                   ticks
                 />
@@ -180,63 +220,6 @@
               </v-chip-group>
             </v-card-text>
           </v-card>
-
-          <v-card v-if="selectedNode" color="surface" variant="flat">
-            <v-card-title class="d-flex align-center">
-              <v-icon :icon="getNodeIcon(selectedNode.label)" :color="getTypeColor(selectedNode.label)" class="mr-2" />
-              节点详情
-              <v-spacer />
-              <v-btn
-                icon="mdi-close"
-                variant="text"
-                size="small"
-                @click="selectedNode = null"
-              />
-            </v-card-title>
-            <v-card-text>
-              <v-list density="compact" class="bg-transparent">
-                <v-list-item>
-                  <template #prepend>
-                    <v-icon icon="mdi-identifier" size="small" />
-                  </template>
-                  <v-list-item-title class="text-caption">ID</v-list-item-title>
-                  <v-list-item-subtitle>{{ selectedNode.id }}</v-list-item-subtitle>
-                </v-list-item>
-                <v-list-item>
-                  <template #prepend>
-                    <v-icon icon="mdi-tag" size="small" />
-                  </template>
-                  <v-list-item-title class="text-caption">名称</v-list-item-title>
-                  <v-list-item-subtitle>{{ selectedNode.name || '-' }}</v-list-item-subtitle>
-                </v-list-item>
-                <v-list-item>
-                  <template #prepend>
-                    <v-icon icon="mdi-shape" size="small" />
-                  </template>
-                  <v-list-item-title class="text-caption">类型</v-list-item-title>
-                  <v-list-item-subtitle>{{ selectedNode.label }}</v-list-item-subtitle>
-                </v-list-item>
-                <v-list-item>
-                  <template #prepend>
-                    <v-icon icon="mdi-percent" size="small" />
-                  </template>
-                  <v-list-item-title class="text-caption">置信度</v-list-item-title>
-                  <v-list-item-subtitle>{{ (selectedNode.confidence * 100).toFixed(0) }}%</v-list-item-subtitle>
-                </v-list-item>
-              </v-list>
-
-              <v-btn
-                color="accent"
-                block
-                class="mt-3"
-                :loading="memoryStore.l3Loading"
-                @click="expandFromSelected"
-              >
-                <v-icon icon="mdi-arrow-expand" class="mr-1" />
-                从此节点拓展
-              </v-btn>
-            </v-card-text>
-          </v-card>
         </v-col>
       </v-row>
 
@@ -276,9 +259,8 @@ const graphContainer = ref<HTMLElement | null>(null)
 const svgElement = ref<SVGSVGElement | null>(null)
 const mainGroup = ref<SVGGElement | null>(null)
 
-const expandDepth = ref(2)
-const maxNodes = ref(50)
 const selectedNode = ref<KGNode | null>(null)
+const popupPosition = ref<{ x: number; y: number } | null>(null)
 
 const currentZoom = ref(1)
 const currentTranslate = ref({ x: 0, y: 0 })
@@ -303,18 +285,19 @@ const loadGraph = () => {
   memoryStore.fetchL3Graph()
 }
 
-const onDepthChange = (depth: number) => {
-  memoryStore.setDepth(depth)
-}
-
 const clearStartNode = () => {
   memoryStore.fetchL3Graph()
+}
+
+const closePopup = () => {
+  selectedNode.value = null
+  popupPosition.value = null
 }
 
 const expandFromSelected = () => {
   if (selectedNode.value) {
     memoryStore.expandFromNode(selectedNode.value.id)
-    selectedNode.value = null
+    closePopup()
   }
 }
 
@@ -459,8 +442,15 @@ const renderGraph = () => {
     g.appendChild(circle)
     g.appendChild(text)
 
-    g.addEventListener('click', () => {
+    g.addEventListener('click', (event: MouseEvent) => {
       selectedNode.value = node
+      const containerRect = graphContainer.value?.getBoundingClientRect()
+      if (containerRect) {
+        popupPosition.value = {
+          x: event.clientX - containerRect.left + 10,
+          y: event.clientY - containerRect.top + 10
+        }
+      }
     })
 
     g.addEventListener('mouseenter', () => {
@@ -551,5 +541,17 @@ onUnmounted(() => {
   justify-content: center;
   background: rgb(var(--v-theme-surface));
   opacity: 0.9;
+}
+
+.node-popup {
+  position: absolute;
+  z-index: 100;
+  pointer-events: auto;
+  min-width: 200px;
+  max-width: 280px;
+}
+
+.popup-card {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 </style>

@@ -18,8 +18,8 @@ export const useMemoryStore = defineStore('memory', () => {
   const l3Graph = ref<KGGraph>({ nodes: [], edges: [] })
   const l3StartNode = ref<KGNode | null>(null)
   const l3Loading = ref(false)
-  const l3Depth = ref(2)
-  const l3MaxNodes = ref(50)
+  const l3Depth = ref(1)
+  const l3MaxNodes = ref(20)
 
   const fetchL1Messages = async (groupId?: string) => {
     l1Loading.value = true
