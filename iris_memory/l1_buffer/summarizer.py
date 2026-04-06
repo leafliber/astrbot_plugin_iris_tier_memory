@@ -112,11 +112,7 @@ class Summarizer:
         
         try:
             total_tokens = sum(msg.token_count for msg in messages)
-            message_list = [
-                {"role": msg.role, "content": msg.content}
-                for msg in messages
-            ]
-            prompt = self._build_summary_prompt(message_list)
+            prompt = self._build_summary_prompt(messages)
             
             logger.info(f"开始总结，共 {len(messages)} 条消息，{total_tokens} tokens")
             
@@ -133,7 +129,7 @@ class Summarizer:
             logger.error(f"总结失败：{e}", exc_info=True)
             raise
     
-    def _build_summary_prompt(self, messages: list[dict]) -> str:
+    def _build_summary_prompt(self, messages: list[ContextMessage]) -> str:
         """构建总结提示词
         
         将消息列表转换为总结提示词，要求 LLM 输出分条格式。
@@ -146,9 +142,14 @@ class Summarizer:
         """
         formatted_messages = []
         for msg in messages:
-            role = msg["role"]
-            content = msg["content"]
-            formatted_messages.append(f"{role}: {content}")
+            if msg.role == "user":
+                user_name = msg.metadata.get("user_name") if msg.metadata else None
+                if user_name:
+                    formatted_messages.append(f"[{user_name}]: {msg.content}")
+                else:
+                    formatted_messages.append(f"[用户]: {msg.content}")
+            else:
+                formatted_messages.append(f"[助手]: {msg.content}")
         
         messages_text = "\n".join(formatted_messages)
         
@@ -162,12 +163,12 @@ class Summarizer:
 2. 每条信息应包含完整的语义，可独立理解
 3. 不同主题的信息分开列出
 4. 省略无关紧要的寒暄和客套话
-5. 每条信息至少包含主语和事件
+5. 每条信息必须明确提到是哪位用户（使用对话中的实际用户名）
 
 示例格式：
-- 用户提到喜欢吃苹果
-- 用户询问了项目的配置方法
-- 用户表示今天工作压力很大
+- 张三提到喜欢吃苹果
+- 李四询问了项目的配置方法
+- 王五表示今天工作压力很大
 
 请输出关键信息："""
         

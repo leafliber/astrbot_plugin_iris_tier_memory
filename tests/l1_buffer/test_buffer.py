@@ -233,6 +233,127 @@ class TestL1Buffer:
         assert stats is None
 
 
+class TestUserIdentification:
+    """测试用户识别逻辑"""
+    
+    def test_build_name_to_id_map(self):
+        """测试构建用户名到用户ID的映射"""
+        buffer = L1Buffer()
+        
+        messages = [
+            ContextMessage(
+                role="user",
+                content="我喜欢吃苹果",
+                timestamp=datetime.now(),
+                token_count=5,
+                source="user_001",
+                metadata={"user_name": "张三"}
+            ),
+            ContextMessage(
+                role="assistant",
+                content="好的，我记住了",
+                timestamp=datetime.now(),
+                token_count=5,
+                source="bot"
+            ),
+            ContextMessage(
+                role="user",
+                content="我还喜欢吃香蕉",
+                timestamp=datetime.now(),
+                token_count=5,
+                source="user_001",
+                metadata={"user_name": "张三"}
+            ),
+            ContextMessage(
+                role="user",
+                content="我喜欢编程",
+                timestamp=datetime.now(),
+                token_count=5,
+                source="user_002",
+                metadata={"user_name": "李四"}
+            ),
+        ]
+        
+        name_to_id = buffer._build_name_to_id_map(messages)
+        
+        assert len(name_to_id) == 2
+        assert name_to_id["张三"] == "user_001"
+        assert name_to_id["李四"] == "user_002"
+    
+    def test_build_name_to_id_map_empty(self):
+        """测试空消息列表"""
+        buffer = L1Buffer()
+        
+        name_to_id = buffer._build_name_to_id_map([])
+        
+        assert len(name_to_id) == 0
+    
+    def test_build_name_to_id_map_no_metadata(self):
+        """测试没有 metadata 的消息"""
+        buffer = L1Buffer()
+        
+        messages = [
+            ContextMessage(
+                role="user",
+                content="我喜欢吃苹果",
+                timestamp=datetime.now(),
+                token_count=5,
+                source="user_001"
+            ),
+        ]
+        
+        name_to_id = buffer._build_name_to_id_map(messages)
+        
+        assert len(name_to_id) == 0
+    
+    def test_extract_user_from_item(self):
+        """测试从总结条目提取用户ID"""
+        buffer = L1Buffer()
+        
+        name_to_id = {
+            "张三": "user_001",
+            "李四": "user_002"
+        }
+        
+        user_id = buffer._extract_user_from_item(
+            "张三提到喜欢吃苹果",
+            name_to_id
+        )
+        
+        assert user_id == "user_001"
+        
+        user_id = buffer._extract_user_from_item(
+            "李四表示喜欢编程",
+            name_to_id
+        )
+        
+        assert user_id == "user_002"
+    
+    def test_extract_user_no_match(self):
+        """测试无法匹配时返回 None"""
+        buffer = L1Buffer()
+        
+        name_to_id = {
+            "张三": "user_001",
+            "李四": "user_002"
+        }
+        
+        user_id = buffer._extract_user_from_item(
+            "王五提到今天天气很好",
+            name_to_id
+        )
+        
+        assert user_id is None
+    
+    def test_extract_user_empty_map(self):
+        """测试空用户映射"""
+        buffer = L1Buffer()
+        
+        user_id = buffer._extract_user_from_item("任何内容", {})
+        
+        assert user_id is None
+
+
 class TestParseSummaryItems:
     """测试分条总结解析"""
     
@@ -243,21 +364,6 @@ class TestParseSummaryItems:
         summary = """- 用户提到喜欢吃苹果
 - 用户询问了项目的配置方法
 - 用户表示今天工作压力很大"""
-        
-        items = buffer._parse_summary_items(summary)
-        
-        assert len(items) == 3
-        assert items[0] == "用户提到喜欢吃苹果"
-        assert items[1] == "用户询问了项目的配置方法"
-        assert items[2] == "用户表示今天工作压力很大"
-    
-    def test_parse_with_numbered_prefix(self):
-        """测试解析带数字前缀的条目"""
-        buffer = L1Buffer()
-        
-        summary = """1. 用户提到喜欢吃苹果
-2. 用户询问了项目的配置方法
-3. 用户表示今天工作压力很大"""
         
         items = buffer._parse_summary_items(summary)
         

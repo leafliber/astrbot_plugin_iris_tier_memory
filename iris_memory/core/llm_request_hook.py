@@ -62,37 +62,32 @@ async def _inject_l1_context(
     """
     from iris_memory.platform import get_adapter
     
-    # 1. 获取 L1Buffer 组件
     buffer = component_manager.get_component("l1_buffer")
     if not buffer or not buffer.is_available:
         logger.debug("L1 Buffer 组件不可用，跳过上下文注入")
         return
     
-    # 类型转换：get_component 返回 Component，实际为 L1Buffer
     l1_buffer = cast("L1Buffer", buffer)
     
-    # 2. 获取群聊ID
     adapter = get_adapter(event)
     group_id = adapter.get_group_id(event)
     
-    # 3. 获取配置中的最大消息条数
-    # TODO: 从 component_manager 获取配置
-    # 暂时使用默认值
     max_length = 20
     
-    # 4. 获取上下文消息
     messages = l1_buffer.get_context(group_id, max_length)
     if not messages:
         logger.debug(f"群聊 {group_id} 的 L1 上下文为空，跳过注入")
         return
     
-    # 5. 转换为 OpenAI Chat API 格式
-    context_list = [
-        {"role": msg.role, "content": msg.content}
-        for msg in messages
-    ]
+    context_list = []
+    for msg in messages:
+        content = msg.content
+        if msg.role == "user":
+            user_name = msg.metadata.get("user_name") if msg.metadata else None
+            if user_name:
+                content = f"[{user_name}]: {content}"
+        context_list.append({"role": msg.role, "content": content})
     
-    # 6. 注入到 req.contexts
     if req.contexts:
         req.contexts = context_list + req.contexts
     else:

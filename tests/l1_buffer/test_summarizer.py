@@ -125,14 +125,27 @@ class TestSummarizer:
         summarizer = Summarizer(llm_manager=mock_llm_manager)
         
         messages = [
-            {"role": "user", "content": "你好"},
-            {"role": "assistant", "content": "你好！"}
+            ContextMessage(
+                role="user",
+                content="你好",
+                timestamp=datetime.now(),
+                token_count=2,
+                source="user_001",
+                metadata={"user_name": "张三"}
+            ),
+            ContextMessage(
+                role="assistant",
+                content="你好！",
+                timestamp=datetime.now(),
+                token_count=3,
+                source="bot"
+            )
         ]
         
         prompt = summarizer._build_summary_prompt(messages)
         
-        assert "你好" in prompt
-        assert "你好！" in prompt
+        assert "[张三]: 你好" in prompt
+        assert "[助手]: 你好！" in prompt
         assert "分条列出" in prompt
         assert "- " in prompt
     
@@ -141,8 +154,21 @@ class TestSummarizer:
         summarizer = Summarizer(llm_manager=mock_llm_manager)
         
         messages = [
-            {"role": "user", "content": "我喜欢吃苹果"},
-            {"role": "assistant", "content": "好的，我记住了"}
+            ContextMessage(
+                role="user",
+                content="我喜欢吃苹果",
+                timestamp=datetime.now(),
+                token_count=5,
+                source="user_001",
+                metadata={"user_name": "张三"}
+            ),
+            ContextMessage(
+                role="assistant",
+                content="好的，我记住了",
+                timestamp=datetime.now(),
+                token_count=5,
+                source="bot"
+            )
         ]
         
         prompt = summarizer._build_summary_prompt(messages)
@@ -151,6 +177,53 @@ class TestSummarizer:
         assert "使用 \"- \" 开头" in prompt
         assert "不同主题的信息分开列出" in prompt
         assert "示例格式" in prompt
+        assert "必须明确提到是哪位用户" in prompt
+    
+    def test_build_summary_prompt_with_user_names(self, mock_llm_manager):
+        """测试总结提示词包含用户名"""
+        summarizer = Summarizer(llm_manager=mock_llm_manager)
+        
+        messages = [
+            ContextMessage(
+                role="user",
+                content="我喜欢吃苹果",
+                timestamp=datetime.now(),
+                token_count=5,
+                source="user_001",
+                metadata={"user_name": "张三"}
+            ),
+            ContextMessage(
+                role="user",
+                content="我喜欢编程",
+                timestamp=datetime.now(),
+                token_count=5,
+                source="user_002",
+                metadata={"user_name": "李四"}
+            )
+        ]
+        
+        prompt = summarizer._build_summary_prompt(messages)
+        
+        assert "[张三]: 我喜欢吃苹果" in prompt
+        assert "[李四]: 我喜欢编程" in prompt
+    
+    def test_build_summary_prompt_without_user_name(self, mock_llm_manager):
+        """测试没有用户名时显示默认标签"""
+        summarizer = Summarizer(llm_manager=mock_llm_manager)
+        
+        messages = [
+            ContextMessage(
+                role="user",
+                content="你好",
+                timestamp=datetime.now(),
+                token_count=2,
+                source="user_001"
+            )
+        ]
+        
+        prompt = summarizer._build_summary_prompt(messages)
+        
+        assert "[用户]: 你好" in prompt
 
 
 class TestMessageQueueSplit:

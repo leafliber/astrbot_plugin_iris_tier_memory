@@ -552,6 +552,7 @@ class L1Buffer(Component):
         """将总结写入 L2 记忆库
         
         解析分条总结，每条独立存储到 L2 记忆库。
+        从总结内容中提取用户名，绑定到具体的发送用户。
         
         Args:
             group_id: 群聊ID
@@ -579,18 +580,8 @@ class L1Buffer(Component):
             
             retriever = MemoryRetriever(self._component_manager)
             
-            metadata = {
-                "group_id": group_id,
-                "source": "l1_summary",
-                "timestamp": datetime.now().isoformat(),
-                "confidence": 0.8,
-            }
-            
-            active_users = list(
-                set(msg.source for msg in messages if msg.role == "user")
-            )
-            if active_users:
-                metadata["active_users"] = ",".join(active_users)
+            name_to_id = self._build_name_to_id_map(messages)
+            active_users = list(set(msg.source for msg in messages if msg.role == "user" and msg.source))
             
             summary_items = self._parse_summary_items(summary)
             
@@ -600,7 +591,22 @@ class L1Buffer(Component):
             
             memory_ids = []
             for item in summary_items:
-                memory_id = await retriever.add_from_summary(item, metadata.copy())
+                user_id = self._extract_user_from_item(item, name_to_id)
+                
+                metadata = {
+                    "group_id": group_id,
+                    "source": "l1_summary",
+                    "timestamp": datetime.now().isoformat(),
+                    "confidence": 0.8,
+                }
+                
+                if user_id:
+                    metadata["user_id"] = user_id
+                
+                if active_users:
+                    metadata["active_users"] = ",".join(active_users)
+                
+                memory_id = await retriever.add_from_summary(item, metadata)
                 if memory_id:
                     memory_ids.append(memory_id)
             
@@ -614,6 +620,52 @@ class L1Buffer(Component):
         except Exception as e:
             logger.error(f"写入 L2 记忆库失败: {e}", exc_info=True)
             return None
+    
+    def _build_name_to_id_map(
+        self, 
+        messages: list[ContextMessage]
+    ) -> dict[str, str]:
+        """构建用户名到用户ID的映射
+        
+        Args:
+            messages: 消息列表
+        
+        Returns:
+            {user_name: user_id}
+        """
+        name_to_id: dict[str, str] = {}
+        for msg in messages:
+            if msg.role == "user" and msg.source and msg.metadata:
+                user_name = msg.metadata.get("user_name")
+                if user_name and user_name not in name_to_id:
+                    name_to_id[user_name] = msg.source
+        return name_to_id
+    
+    def _extract_user_from_item(
+        self, 
+        item: str, 
+        name_to_id: dict[str, str]
+    ) -> Optional[str]:
+        """从总结条目中提取用户ID
+        
+        总结格式如："张三提到喜欢吃苹果"
+        通过匹配用户名来识别用户。
+        
+        Args:
+            item: 记忆条目内容
+            name_to_id: 用户名到用户ID的映射
+        
+        Returns:
+            用户ID，无法识别时返回 None
+        """
+        if not name_to_id:
+            return None
+        
+        for user_name, user_id in name_to_id.items():
+            if item.startswith(user_name):
+                return user_id
+        
+        return None
     
     def _parse_summary_items(self, summary: str, min_length: int = 5) -> list[str]:
         """解析分条总结

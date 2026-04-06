@@ -52,7 +52,6 @@ async def _add_to_l1_buffer(
     """
     from iris_memory.platform import get_adapter
     
-    # 先检查消息内容，避免不必要的 adapter 调用
     content = event.message_str
     if not content:
         logger.debug("消息内容为空，跳过添加")
@@ -63,18 +62,23 @@ async def _add_to_l1_buffer(
         logger.debug("L1 Buffer 组件不可用，跳过消息添加")
         return
     
-    # 类型转换：get_component 返回 Component，实际为 L1Buffer
     l1_buffer = cast("L1Buffer", buffer)
     
     adapter = get_adapter(event)
     group_id = adapter.get_group_id(event)
     user_id = adapter.get_user_id(event)
+    user_name = adapter.get_user_name(event)
+    
+    metadata = {}
+    if user_name:
+        metadata["user_name"] = user_name
     
     await l1_buffer.add_message(
         group_id=group_id,
         role="user",
         content=content,
-        source=user_id
+        source=user_id,
+        metadata=metadata
     )
     
     logger.debug(f"已添加用户消息到群聊 {group_id} 的 L1 Buffer")
