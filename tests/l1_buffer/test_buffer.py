@@ -231,3 +231,163 @@ class TestL1Buffer:
         stats = buffer.get_queue_stats("nonexistent_group")
         
         assert stats is None
+
+
+class TestParseSummaryItems:
+    """测试分条总结解析"""
+    
+    def test_parse_with_dash_prefix(self):
+        """测试解析带 "- " 前缀的条目"""
+        buffer = L1Buffer()
+        
+        summary = """- 用户提到喜欢吃苹果
+- 用户询问了项目的配置方法
+- 用户表示今天工作压力很大"""
+        
+        items = buffer._parse_summary_items(summary)
+        
+        assert len(items) == 3
+        assert items[0] == "用户提到喜欢吃苹果"
+        assert items[1] == "用户询问了项目的配置方法"
+        assert items[2] == "用户表示今天工作压力很大"
+    
+    def test_parse_with_numbered_prefix(self):
+        """测试解析带数字前缀的条目"""
+        buffer = L1Buffer()
+        
+        summary = """1. 用户提到喜欢吃苹果
+2. 用户询问了项目的配置方法
+3. 用户表示今天工作压力很大"""
+        
+        items = buffer._parse_summary_items(summary)
+        
+        assert len(items) == 3
+        assert items[0] == "用户提到喜欢吃苹果"
+        assert items[1] == "用户询问了项目的配置方法"
+        assert items[2] == "用户表示今天工作压力很大"
+    
+    def test_parse_with_bullet_prefix(self):
+        """测试解析带 "• " 前缀的条目"""
+        buffer = L1Buffer()
+        
+        summary = """• 用户提到喜欢吃苹果
+• 用户询问了项目的配置方法"""
+        
+        items = buffer._parse_summary_items(summary)
+        
+        assert len(items) == 2
+        assert items[0] == "用户提到喜欢吃苹果"
+        assert items[1] == "用户询问了项目的配置方法"
+    
+    def test_parse_mixed_format(self):
+        """测试解析混合格式的条目"""
+        buffer = L1Buffer()
+        
+        summary = """- 用户提到喜欢吃苹果
+1. 用户询问了项目的配置方法
+• 用户表示今天工作压力很大"""
+        
+        items = buffer._parse_summary_items(summary)
+        
+        assert len(items) == 3
+    
+    def test_parse_empty_lines_ignored(self):
+        """测试空行被忽略"""
+        buffer = L1Buffer()
+        
+        summary = """- 用户提到喜欢吃苹果
+
+- 用户询问了项目的配置方法
+
+"""
+        
+        items = buffer._parse_summary_items(summary)
+        
+        assert len(items) == 2
+    
+    def test_parse_short_items_filtered(self):
+        """测试短条目被过滤"""
+        buffer = L1Buffer()
+        
+        summary = """- 用户提到喜欢吃苹果
+- 短
+- 用户询问了项目的配置方法
+- abc
+- 用户表示今天工作压力很大"""
+        
+        items = buffer._parse_summary_items(summary)
+        
+        assert len(items) == 3
+        assert "短" not in items
+        assert "abc" not in items
+    
+    def test_parse_min_length_parameter(self):
+        """测试最小长度参数"""
+        buffer = L1Buffer()
+        
+        summary = """- 用户提到喜欢吃苹果
+- 短条目
+- 用户询问了项目的配置方法"""
+        
+        items = buffer._parse_summary_items(summary, min_length=10)
+        
+        assert len(items) == 2
+        assert "短条目" not in items
+    
+    def test_parse_plain_lines(self):
+        """测试解析无前缀的普通行"""
+        buffer = L1Buffer()
+        
+        summary = """用户提到喜欢吃苹果
+用户询问了项目的配置方法
+用户表示今天工作压力很大"""
+        
+        items = buffer._parse_summary_items(summary)
+        
+        assert len(items) == 3
+    
+    def test_parse_empty_summary(self):
+        """测试空总结"""
+        buffer = L1Buffer()
+        
+        items = buffer._parse_summary_items("")
+        
+        assert len(items) == 0
+    
+    def test_parse_whitespace_only(self):
+        """测试仅包含空白字符的总结"""
+        buffer = L1Buffer()
+        
+        summary = """   
+   
+"""
+        
+        items = buffer._parse_summary_items(summary)
+        
+        assert len(items) == 0
+    
+    def test_parse_chinese_numbered_prefix(self):
+        """测试中文数字前缀"""
+        buffer = L1Buffer()
+        
+        summary = """1、用户提到喜欢吃苹果
+2、用户询问了项目的配置方法"""
+        
+        items = buffer._parse_summary_items(summary)
+        
+        assert len(items) == 2
+        assert items[0] == "用户提到喜欢吃苹果"
+        assert items[1] == "用户询问了项目的配置方法"
+    
+    def test_parse_parenthesis_prefix(self):
+        """测试括号前缀"""
+        buffer = L1Buffer()
+        
+        summary = """1) 用户提到喜欢吃苹果
+2) 用户询问了项目的配置方法"""
+        
+        items = buffer._parse_summary_items(summary)
+        
+        assert len(items) == 2
+        assert items[0] == "用户提到喜欢吃苹果"
+        assert items[1] == "用户询问了项目的配置方法"

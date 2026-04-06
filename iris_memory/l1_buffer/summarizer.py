@@ -136,7 +136,7 @@ class Summarizer:
     def _build_summary_prompt(self, messages: list[dict]) -> str:
         """构建总结提示词
         
-        将消息列表转换为总结提示词。
+        将消息列表转换为总结提示词，要求 LLM 输出分条格式。
         
         Args:
             messages: 消息列表
@@ -144,7 +144,6 @@ class Summarizer:
         Returns:
             总结提示词
         """
-        # 格式化消息
         formatted_messages = []
         for msg in messages:
             role = msg["role"]
@@ -153,11 +152,23 @@ class Summarizer:
         
         messages_text = "\n".join(formatted_messages)
         
-        # 构建提示词
-        prompt = f"""请总结以下对话内容，提取关键信息：
+        prompt = f"""请分析以下对话内容，提取关键信息并分条列出。
 
+对话内容：
 {messages_text}
 
-总结："""
+要求：
+1. 每条信息独立成行，使用 "- " 开头
+2. 每条信息应包含完整的语义，可独立理解
+3. 不同主题的信息分开列出
+4. 省略无关紧要的寒暄和客套话
+5. 每条信息至少包含主语和事件
+
+示例格式：
+- 用户提到喜欢吃苹果
+- 用户询问了项目的配置方法
+- 用户表示今天工作压力很大
+
+请输出关键信息："""
         
         return prompt

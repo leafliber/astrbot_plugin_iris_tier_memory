@@ -551,13 +551,15 @@ class L1Buffer(Component):
     ) -> Optional[str]:
         """将总结写入 L2 记忆库
         
+        解析分条总结，每条独立存储到 L2 记忆库。
+        
         Args:
             group_id: 群聊ID
             messages: 被总结的消息列表
-            summary: 总结文本
+            summary: 总结文本（分条格式）
         
         Returns:
-            记忆 ID，失败时返回 None
+            第一条记忆 ID，失败时返回 None
         """
         config = get_config()
         if not config.get("l2_memory.enable"):
@@ -590,19 +592,65 @@ class L1Buffer(Component):
             if active_users:
                 metadata["active_users"] = ",".join(active_users)
             
-            # 写入记忆
-            memory_id = await retriever.add_from_summary(summary, metadata)
+            summary_items = self._parse_summary_items(summary)
             
-            if memory_id:
-                logger.info(f"已将总结写入 L2 记忆库：{memory_id}")
+            if not summary_items:
+                logger.warning(f"总结解析后无有效条目，原内容：{summary[:100]}...")
+                return None
+            
+            memory_ids = []
+            for item in summary_items:
+                memory_id = await retriever.add_from_summary(item, metadata.copy())
+                if memory_id:
+                    memory_ids.append(memory_id)
+            
+            if memory_ids:
+                logger.info(f"已将 {len(memory_ids)} 条记忆写入 L2 记忆库")
+                return memory_ids[0]
             else:
                 logger.warning("写入 L2 记忆库失败")
-            
-            return memory_id
+                return None
         
         except Exception as e:
             logger.error(f"写入 L2 记忆库失败: {e}", exc_info=True)
             return None
+    
+    def _parse_summary_items(self, summary: str, min_length: int = 5) -> list[str]:
+        """解析分条总结
+        
+        支持多种格式：
+        - "- 条目内容"
+        - "1. 条目内容"
+        - "• 条目内容"
+        - 换行分隔
+        
+        Args:
+            summary: 总结文本
+            min_length: 最小条目长度，低于此长度则忽略
+        
+        Returns:
+            解析后的条目列表
+        """
+        items = []
+        lines = summary.strip().split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            if line.startswith('- '):
+                line = line[2:]
+            elif line.startswith('• '):
+                line = line[2:]
+            elif len(line) > 2 and line[0].isdigit() and line[1] in '.、)':
+                line = line[2:].strip()
+            
+            line = line.strip()
+            if len(line) >= min_length:
+                items.append(line)
+        
+        return items
     
     async def _extract_and_store_to_kg(
         self,

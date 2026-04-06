@@ -133,7 +133,24 @@ class TestSummarizer:
         
         assert "你好" in prompt
         assert "你好！" in prompt
-        assert "总结" in prompt
+        assert "分条列出" in prompt
+        assert "- " in prompt
+    
+    def test_build_summary_prompt_format(self, mock_llm_manager):
+        """测试总结提示词包含分条格式要求"""
+        summarizer = Summarizer(llm_manager=mock_llm_manager)
+        
+        messages = [
+            {"role": "user", "content": "我喜欢吃苹果"},
+            {"role": "assistant", "content": "好的，我记住了"}
+        ]
+        
+        prompt = summarizer._build_summary_prompt(messages)
+        
+        assert "每条信息独立成行" in prompt
+        assert "使用 \"- \" 开头" in prompt
+        assert "不同主题的信息分开列出" in prompt
+        assert "示例格式" in prompt
 
 
 class TestMessageQueueSplit:
