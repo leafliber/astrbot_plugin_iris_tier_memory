@@ -751,3 +751,125 @@ class L2MemoryAdapter(Component):
         except Exception as e:
             logger.error(f"删除所有记忆失败: {e}", exc_info=True)
             return 0
+    
+    # ========================================================================
+    # 知识图谱处理相关
+    # ========================================================================
+    
+    async def get_unprocessed_count(self) -> int:
+        """获取未处理的知识图谱记忆数量
+        
+        Returns:
+            未处理的记忆数量
+        """
+        if not self._is_available or not self._collection:
+            return 0
+        
+        try:
+            loop = asyncio.get_event_loop()
+            results = await loop.run_in_executor(
+                None,
+                lambda: self._collection.get()
+            )
+            
+            count = 0
+            if results.get("metadatas"):
+                for meta in results["metadatas"]:
+                    if meta and not meta.get("kg_processed", False):
+                        count += 1
+            
+            return count
+            
+        except Exception as e:
+            logger.error(f"获取未处理记忆数量失败: {e}", exc_info=True)
+            return 0
+    
+    async def get_unprocessed_memories(self, limit: int = 20) -> List[MemoryEntry]:
+        """获取未处理的知识图谱记忆
+        
+        Args:
+            limit: 最大返回数量
+        
+        Returns:
+            未处理的记忆列表
+        """
+        if not self._is_available or not self._collection:
+            return []
+        
+        try:
+            loop = asyncio.get_event_loop()
+            results = await loop.run_in_executor(
+                None,
+                lambda: self._collection.get()
+            )
+            
+            entries = []
+            if results["ids"]:
+                for i, memory_id in enumerate(results["ids"]):
+                    meta = results["metadatas"][i] if results.get("metadatas") else {}
+                    if not meta.get("kg_processed", False):
+                        entries.append(MemoryEntry(
+                            id=memory_id,
+                            content=results["documents"][i],
+                            metadata=meta
+                        ))
+                        if len(entries) >= limit:
+                            break
+            
+            return entries
+            
+        except Exception as e:
+            logger.error(f"获取未处理记忆失败: {e}", exc_info=True)
+            return []
+    
+    async def mark_memories_processed(self, memory_ids: List[str]) -> bool:
+        """标记记忆为已处理
+        
+        Args:
+            memory_ids: 要标记的记忆 ID 列表
+        
+        Returns:
+            是否标记成功
+        """
+        if not self._is_available or not memory_ids:
+            return False
+        
+        try:
+            loop = asyncio.get_event_loop()
+            
+            results = await loop.run_in_executor(
+                None,
+                lambda: self._collection.get(
+                    ids=memory_ids,
+                    include=["embeddings", "metadatas", "documents"]
+                )
+            )
+            
+            if not results['ids']:
+                logger.warning("没有找到要标记的记忆")
+                return False
+            
+            for i, memory_id in enumerate(results['ids']):
+                old_embedding = results['embeddings'][i]
+                old_metadata = results['metadatas'][i]
+                old_document = results['documents'][i]
+                
+                old_metadata['kg_processed'] = True
+                
+                await loop.run_in_executor(
+                    None,
+                    lambda mid=memory_id, emb=old_embedding, meta=old_metadata, doc=old_document: 
+                    self._collection.upsert(
+                        ids=[mid],
+                        embeddings=[emb],
+                        metadatas=[meta],
+                        documents=[doc]
+                    )
+                )
+            
+            logger.info(f"已标记 {len(memory_ids)} 条记忆为已处理")
+            return True
+            
+        except Exception as e:
+            logger.error(f"标记记忆失败: {e}", exc_info=True)
+            return False

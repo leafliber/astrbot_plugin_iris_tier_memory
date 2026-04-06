@@ -19,6 +19,7 @@ from .adapter import L3KGAdapter
 from .extractor import EntityExtractor
 from .retriever import GraphRetriever
 from .eviction import KGEvictionManager
+from .related_retriever import RelatedMemoryRetriever
 
 __all__ = [
     # 数据模型
@@ -32,4 +33,5 @@ __all__ = [
     "EntityExtractor",
     "GraphRetriever",
     "KGEvictionManager",
+    "RelatedMemoryRetriever",
 ]

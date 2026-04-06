@@ -461,16 +461,8 @@ class L1Buffer(Component):
                 if summary:
                     logger.info(f"总结完成：{queue_key}, 长度：{len(summary)}")
                     
-                    active_users = list(
-                        set(msg.source for msg in to_summarize if msg.role == "user")
-                    )
-                    
                     memory_id = await self._write_summary_to_l2(
                         group_id, to_summarize, summary
-                    )
-                    
-                    await self._extract_and_store_to_kg(
-                        group_id, summary, memory_id, active_users
                     )
                     
                     await self._update_profile_after_summary(
@@ -598,6 +590,7 @@ class L1Buffer(Component):
                     "source": "l1_summary",
                     "timestamp": datetime.now().isoformat(),
                     "confidence": 0.8,
+                    "kg_processed": False,
                 }
                 
                 if user_id:
@@ -689,6 +682,9 @@ class L1Buffer(Component):
         for line in lines:
             line = line.strip()
             if not line:
+                continue
+            
+            if line in ("无", "无有效信息", "无有效记忆", "无有价值的信息"):
                 continue
             
             if line.startswith('- '):

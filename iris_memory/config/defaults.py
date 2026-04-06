@@ -140,6 +140,15 @@ class HiddenConfig:
     eviction_batch_size: int = 100              # 淘汰批处理大小
     image_cache_cleanup_interval_hours: int = 24  # 图片缓存清理任务间隔（小时）
     
+    # L3 知识图谱提取任务参数
+    kg_extraction_interval_minutes: int = 30        # 提取任务检测间隔（分钟）
+    kg_extraction_min_unprocessed: int = 10         # 最小未处理记忆数量阈值
+    kg_extraction_batch_size: int = 20              # 每批处理记忆数
+    kg_extraction_max_related: int = 5              # 每条记忆最多关联的相关记忆数
+    kg_extraction_semantic_weight: float = 0.5      # 语义相似记忆权重
+    kg_extraction_same_group_weight: float = 0.3    # 同群聊记忆权重
+    kg_extraction_same_user_weight: float = 0.2     # 同用户记忆权重
+    
     # Tool 配置参数
     tool_memory_max_content_length: int = 500          # 记忆内容最大长度
     tool_correction_require_confirmation: bool = False  # 修正需确认

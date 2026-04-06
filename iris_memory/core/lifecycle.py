@@ -199,7 +199,7 @@ async def _start_scheduled_tasks(component_manager: ComponentManager) -> None:
         component_manager: 组件管理器实例
     """
     from iris_memory.config import get_config
-    from iris_memory.tasks import TaskScheduler, ForgettingTask, MergeTask, ImageCacheCleanupTask
+    from iris_memory.tasks import TaskScheduler, ForgettingTask, MergeTask, ImageCacheCleanupTask, KGExtractionTask
     
     scheduler = component_manager.get_component("scheduler")
     if not scheduler or not scheduler.is_available:
@@ -223,6 +223,16 @@ async def _start_scheduled_tasks(component_manager: ComponentManager) -> None:
         scheduler.register_periodic_task(
             task_name="merging",
             coro_func=merge_task.execute,
+            interval_hours=interval_hours
+        )
+    
+    if config.get("l3_kg.enable"):
+        kg_extraction_task = KGExtractionTask(component_manager)
+        interval_minutes = config.get("kg_extraction_interval_minutes")
+        interval_hours = interval_minutes / 60.0
+        scheduler.register_periodic_task(
+            task_name="kg_extraction",
+            coro_func=kg_extraction_task.execute,
             interval_hours=interval_hours
         )
     

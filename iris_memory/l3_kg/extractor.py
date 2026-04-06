@@ -1,8 +1,10 @@
 """实体和关系提取器"""
 
+from typing import List
 from iris_memory.core import get_logger
 from iris_memory.config import get_config
 from .models import GraphNode, GraphEdge, ExtractionResult, NODE_TYPE_WHITELIST, RELATION_TYPE_WHITELIST
+from iris_memory.l2_memory import MemoryEntry
 import json
 
 logger = get_logger("l3_kg")
@@ -66,6 +68,72 @@ class EntityExtractor:
         except Exception as e:
             logger.error(f"实体提取失败：{e}")
             return ExtractionResult()
+    
+    async def extract_from_memories(
+        self,
+        memories: List[MemoryEntry],
+        context: dict = None
+    ) -> ExtractionResult:
+        """从多条记忆中提取实体和关系
+        
+        将多条记忆合并后提取，用于 L3 知识图谱定时提取任务。
+        
+        Args:
+            memories: 记忆条目列表
+            context: 上下文信息
+        
+        Returns:
+            ExtractionResult: 提取结果，包含节点和边
+        """
+        if not memories:
+            return ExtractionResult()
+        
+        if context is None:
+            context = {}
+        
+        combined_text = self._combine_memories(memories)
+        
+        if context.get("source_memory_id") is None and memories:
+            context["source_memory_id"] = memories[0].id
+        
+        if context.get("group_id") is None and memories:
+            context["group_id"] = memories[0].group_id
+        
+        active_users = set()
+        for mem in memories:
+            user_id = mem.metadata.get("user_id")
+            if user_id:
+                active_users.add(user_id)
+        if active_users and not context.get("active_users"):
+            context["active_users"] = list(active_users)
+        
+        logger.info(f"从 {len(memories)} 条记忆中提取实体和关系")
+        
+        return await self.extract_from_text(combined_text, context)
+    
+    def _combine_memories(self, memories: List[MemoryEntry]) -> str:
+        """合并多条记忆内容
+        
+        Args:
+            memories: 记忆条目列表
+        
+        Returns:
+            合并后的文本
+        """
+        lines = []
+        for i, mem in enumerate(memories, 1):
+            user_info = ""
+            user_id = mem.metadata.get("user_id")
+            if user_id:
+                user_info = f"[用户:{user_id}] "
+            
+            group_info = ""
+            if mem.group_id:
+                group_info = f"[群:{mem.group_id}] "
+            
+            lines.append(f"{i}. {user_info}{group_info}{mem.content}")
+        
+        return "\n".join(lines)
     
     def _build_extraction_prompt(self, text: str) -> str:
         """构建提取 prompt

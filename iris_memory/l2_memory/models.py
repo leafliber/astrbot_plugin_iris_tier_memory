@@ -123,6 +123,15 @@ class MemoryEntry:
             置信度分数，默认为 0.5
         """
         return self.metadata.get("confidence", 0.5)
+    
+    @property
+    def kg_processed(self) -> bool:
+        """获取知识图谱处理状态
+        
+        Returns:
+            是否已处理，默认为 False
+        """
+        return self.metadata.get("kg_processed", False)
 
 
 @dataclass
