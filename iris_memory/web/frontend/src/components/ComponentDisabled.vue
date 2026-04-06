@@ -77,16 +77,19 @@ const title = computed(() => {
 })
 
 const message = computed(() => {
-  if (props.status === 'pending') {
-    return '正在等待初始化...'
+  switch (props.status) {
+    case 'pending':
+      return '正在等待初始化...'
+    case 'initializing':
+      return '组件正在初始化中，请稍候...'
+    case 'unavailable':
+      if (props.errorType) {
+        return ERROR_TYPE_DISPLAY_NAMES[props.errorType] || props.error || '未知错误'
+      }
+      return props.error || '组件不可用'
+    default:
+      return props.error || '组件不可用'
   }
-  if (props.status === 'initializing') {
-    return '组件正在初始化中，请稍候...'
-  }
-  if (props.errorType) {
-    return ERROR_TYPE_DISPLAY_NAMES[props.errorType] || props.error || '未知错误'
-  }
-  return props.error || '组件不可用'
 })
 </script>
 

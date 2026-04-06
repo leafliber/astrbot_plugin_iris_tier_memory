@@ -244,13 +244,25 @@ def classify_error(error_msg: str) -> ErrorType:
     """
     error_lower = error_msg.lower()
     
-    if any(keyword in error_lower for keyword in ["disabled", "未启用", "已禁用", "未开启"]):
+    disabled_keywords = [
+        "disabled", "not enabled", "未启用", "已禁用", "未开启", "未启用"
+    ]
+    if any(keyword in error_lower for keyword in disabled_keywords):
         return ErrorType.DISABLED
     
-    if any(keyword in error_lower for keyword in ["no module named", "import error", "missing", "not found", "未安装", "找不到模块"]):
+    dependency_keywords = [
+        "no module named", "importerror", "modulenotfounderror",
+        "missing", "not found", "dependency", "required",
+        "未安装", "找不到模块", "依赖缺失", "缺少依赖"
+    ]
+    if any(keyword in error_lower for keyword in dependency_keywords):
         return ErrorType.DEPENDENCY_MISSING
     
-    if any(keyword in error_lower for keyword in ["connection", "connect", "timeout", "refused", "无法连接", "连接失败", "超时"]):
+    connection_keywords = [
+        "connection", "connect", "timeout", "refused", "unreachable",
+        "network", "socket", "无法连接", "连接失败", "超时", "网络错误"
+    ]
+    if any(keyword in error_lower for keyword in connection_keywords):
         return ErrorType.CONNECTION_FAILED
     
     return ErrorType.OTHER
