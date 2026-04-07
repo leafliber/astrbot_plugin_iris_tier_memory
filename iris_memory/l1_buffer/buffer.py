@@ -145,10 +145,16 @@ class L1Buffer(Component):
             logger.warning("LLMManager 不可用，无法创建 Summarizer")
             return None
         
+        # 获取 persona_manager
+        persona_manager = None
+        if hasattr(llm_manager, 'persona_manager'):
+            persona_manager = llm_manager.persona_manager
+        
         # 创建 Summarizer
         self._summarizer = Summarizer(
             llm_manager=llm_manager,
-            provider=self._provider
+            provider=self._provider,
+            persona_manager=persona_manager
         )
         logger.info("Summarizer 已延迟创建")
         
@@ -575,6 +581,8 @@ class L1Buffer(Component):
             name_to_id = self._build_name_to_id_map(messages)
             active_users = list(set(msg.source for msg in messages if msg.role == "user" and msg.source))
             
+            persona_id = self._get_current_persona_id()
+            
             summary_items = self._parse_summary_items(summary)
             
             if not summary_items:
@@ -598,6 +606,9 @@ class L1Buffer(Component):
                 
                 if active_users:
                     metadata["active_users"] = ",".join(active_users)
+                
+                if persona_id:
+                    metadata["persona_id"] = persona_id
                 
                 memory_id = await retriever.add_from_summary(item, metadata)
                 if memory_id:
@@ -699,6 +710,28 @@ class L1Buffer(Component):
                 items.append(line)
         
         return items
+    
+    def _get_current_persona_id(self) -> Optional[str]:
+        """获取当前人格ID
+        
+        从 LLMManager 获取 persona_manager，再获取当前人格ID。
+        
+        Returns:
+            人格ID，无法获取时返回 None
+        """
+        if not self._component_manager:
+            return None
+        
+        llm_manager = self._component_manager.get_component("llm_manager")
+        if not llm_manager or not llm_manager.is_available:
+            return None
+        
+        persona_manager = getattr(llm_manager, 'persona_manager', None)
+        if not persona_manager:
+            return None
+        
+        persona_id = getattr(persona_manager, 'default_persona_id', None)
+        return persona_id
     
     async def _extract_and_store_to_kg(
         self,

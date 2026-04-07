@@ -26,11 +26,14 @@ class MemoryEntry:
         metadata: 元数据字典，包含：
             - group_id: 群聊ID
             - user_id: 用户ID（可选）
+            - persona_id: 人格ID（可选），记录记忆产生时的人格上下文
             - timestamp: 创建时间戳
             - access_count: 访问次数
             - last_access_time: 最近访问时间
             - confidence: 置信度
             - source: 来源（summary/tool）
+            - active_users: 活跃用户列表（可选）
+            - kg_processed: 是否已处理知识图谱
     
     Examples:
         >>> entry = MemoryEntry(
@@ -38,6 +41,7 @@ class MemoryEntry:
         ...     content="用户喜欢吃苹果",
         ...     metadata={
         ...         "group_id": "group_123",
+        ...         "persona_id": "default",
         ...         "timestamp": datetime.now().isoformat(),
         ...         "access_count": 1,
         ...         "confidence": 0.85

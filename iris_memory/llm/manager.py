@@ -57,6 +57,17 @@ class LLMManager(Component):
         """组件名称"""
         return "llm_manager"
     
+    @property
+    def persona_manager(self):
+        """获取 AstrBot 人格管理器
+        
+        Returns:
+            PersonaManager 实例，如果不可用则返回 None
+        """
+        if hasattr(self._context, 'persona_manager'):
+            return self._context.persona_manager
+        return None
+    
     async def initialize(self) -> None:
         """初始化管理器
         

@@ -224,6 +224,80 @@ class TestSummarizer:
         prompt = summarizer._build_summary_prompt(messages)
         
         assert "[用户]: 你好" in prompt
+    
+    def test_build_summary_prompt_with_persona(self, mock_llm_manager):
+        """测试带人格约束的总结提示词"""
+        mock_persona_manager = Mock()
+        mock_persona = Mock()
+        mock_persona.system_prompt = "你是一个温柔的女友，叫小樱，性格甜美黏人。"
+        mock_persona_manager.get_persona = Mock(return_value=mock_persona)
+        mock_persona_manager.default_persona_id = "default"
+        
+        summarizer = Summarizer(
+            llm_manager=mock_llm_manager,
+            persona_manager=mock_persona_manager
+        )
+        
+        messages = [
+            ContextMessage(
+                role="user",
+                content="你好",
+                timestamp=datetime.now(),
+                token_count=2,
+                source="user_001",
+                metadata={"user_name": "张三"}
+            )
+        ]
+        
+        prompt = summarizer._build_summary_prompt(messages)
+        
+        assert "人格约束" in prompt
+        assert "你是一个温柔的女友" in prompt
+        assert "人格设定保持一致" in prompt
+    
+    def test_build_summary_prompt_without_persona_manager(self, mock_llm_manager):
+        """测试没有 persona_manager 时不包含人格约束"""
+        summarizer = Summarizer(llm_manager=mock_llm_manager)
+        
+        messages = [
+            ContextMessage(
+                role="user",
+                content="你好",
+                timestamp=datetime.now(),
+                token_count=2,
+                source="user_001",
+                metadata={"user_name": "张三"}
+            )
+        ]
+        
+        prompt = summarizer._build_summary_prompt(messages)
+        
+        assert "人格约束" not in prompt
+    
+    def test_get_persona_constraint_with_valid_persona(self, mock_llm_manager):
+        """测试获取有效的人格约束"""
+        mock_persona_manager = Mock()
+        mock_persona = Mock()
+        mock_persona.system_prompt = "你是一个助手。"
+        mock_persona_manager.get_persona = Mock(return_value=mock_persona)
+        mock_persona_manager.default_persona_id = "default"
+        
+        summarizer = Summarizer(
+            llm_manager=mock_llm_manager,
+            persona_manager=mock_persona_manager
+        )
+        
+        constraint = summarizer._get_persona_constraint()
+        
+        assert constraint == "你是一个助手。"
+    
+    def test_get_persona_constraint_without_persona_manager(self, mock_llm_manager):
+        """测试没有 persona_manager 时返回 None"""
+        summarizer = Summarizer(llm_manager=mock_llm_manager)
+        
+        constraint = summarizer._get_persona_constraint()
+        
+        assert constraint is None
 
 
 class TestMessageQueueSplit:
