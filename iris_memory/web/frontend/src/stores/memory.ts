@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { L1Message, L2Memory, KGGraph, KGNode, L1QueueItem } from '@/types'
+import type { L3SearchNodeResult, L3SearchEdgeResult } from '@/api/memory'
 import * as memoryApi from '@/api/memory'
 
 export const useMemoryStore = defineStore('memory', () => {
@@ -24,6 +25,10 @@ export const useMemoryStore = defineStore('memory', () => {
   const l3Loading = ref(false)
   const l3Depth = ref(1)
   const l3MaxNodes = ref(20)
+  
+  const l3SearchResults = ref<{ nodes: L3SearchNodeResult[], edges: L3SearchEdgeResult[] }>({ nodes: [], edges: [] })
+  const l3SearchLoading = ref(false)
+  const l3SearchKeyword = ref('')
 
   const fetchL1Messages = async (groupId?: string) => {
     l1Loading.value = true
@@ -149,6 +154,34 @@ export const useMemoryStore = defineStore('memory', () => {
     l2LatestLimit.value = limit
   }
 
+  const searchL3 = async (keyword: string) => {
+    if (!keyword.trim()) {
+      l3SearchResults.value = { nodes: [], edges: [] }
+      return
+    }
+    
+    l3SearchLoading.value = true
+    l3SearchKeyword.value = keyword
+    
+    try {
+      const [nodes, edges] = await Promise.all([
+        memoryApi.searchL3Nodes(keyword),
+        memoryApi.searchL3Edges(keyword)
+      ])
+      l3SearchResults.value = { nodes, edges }
+    } catch (error) {
+      console.error('搜索L3图谱失败:', error)
+      l3SearchResults.value = { nodes: [], edges: [] }
+    } finally {
+      l3SearchLoading.value = false
+    }
+  }
+
+  const clearL3Search = () => {
+    l3SearchResults.value = { nodes: [], edges: [] }
+    l3SearchKeyword.value = ''
+  }
+
   return {
     l1Messages,
     l1Loading,
@@ -167,6 +200,9 @@ export const useMemoryStore = defineStore('memory', () => {
     l3Loading,
     l3Depth,
     l3MaxNodes,
+    l3SearchResults,
+    l3SearchLoading,
+    l3SearchKeyword,
     fetchL1Messages,
     fetchL1Queues,
     searchL2Memory,
@@ -177,6 +213,8 @@ export const useMemoryStore = defineStore('memory', () => {
     setMaxNodes,
     clearL2Results,
     fetchLatestL2Memories,
-    setL2LatestLimit
+    setL2LatestLimit,
+    searchL3,
+    clearL3Search
   }
 })

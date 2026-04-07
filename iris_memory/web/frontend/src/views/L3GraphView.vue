@@ -59,6 +59,7 @@
                   </defs>
                   <g ref="mainGroup" class="main-group">
                     <g class="edges-layer"></g>
+                    <g class="edge-labels-layer"></g>
                     <g class="nodes-layer"></g>
                   </g>
                 </svg>
@@ -110,12 +111,152 @@
                     </v-card-text>
                   </v-card>
                 </div>
+                <div
+                  v-if="selectedEdge && edgePopupPosition"
+                  class="node-popup"
+                  :style="{ left: edgePopupPosition.x + 'px', top: edgePopupPosition.y + 'px' }"
+                >
+                  <v-card color="surface" variant="elevated" class="popup-card">
+                    <v-card-title class="d-flex align-center text-subtitle-1 pa-3">
+                      <v-icon icon="mdi-arrow-right-bold" color="secondary" class="mr-2" size="small" />
+                      {{ selectedEdge.relation }}
+                      <v-spacer />
+                      <v-btn
+                        icon="mdi-close"
+                        variant="text"
+                        size="x-small"
+                        density="compact"
+                        @click="closeEdgePopup"
+                      />
+                    </v-card-title>
+                    <v-card-text class="pa-3 pt-0">
+                      <div class="text-caption mb-2">
+                        <v-icon :icon="getNodeIcon(selectedEdge.sourceNode.label)" :color="getTypeColor(selectedEdge.sourceNode.label)" size="small" class="mr-1" />
+                        <strong>{{ selectedEdge.sourceNode.name || selectedEdge.sourceNode.id }}</strong>
+                      </div>
+                      <div class="text-caption text-center mb-2">
+                        <v-icon icon="mdi-arrow-down" size="small" />
+                      </div>
+                      <div class="text-caption mb-2">
+                        <v-icon :icon="getNodeIcon(selectedEdge.targetNode.label)" :color="getTypeColor(selectedEdge.targetNode.label)" size="small" class="mr-1" />
+                        <strong>{{ selectedEdge.targetNode.name || selectedEdge.targetNode.id }}</strong>
+                      </div>
+                      <v-btn
+                        color="secondary"
+                        size="small"
+                        block
+                        class="mb-2"
+                        :loading="memoryStore.l3Loading"
+                        @click="expandFromEdge('source')"
+                      >
+                        <v-icon icon="mdi-arrow-expand-left" class="mr-1" />
+                        从源节点展开
+                      </v-btn>
+                      <v-btn
+                        color="secondary"
+                        size="small"
+                        block
+                        :loading="memoryStore.l3Loading"
+                        @click="expandFromEdge('target')"
+                      >
+                        <v-icon icon="mdi-arrow-expand-right" class="mr-1" />
+                        从目标节点展开
+                      </v-btn>
+                    </v-card-text>
+                  </v-card>
+                </div>
               </div>
             </v-card-text>
           </v-card>
         </v-col>
 
         <v-col cols="12" lg="4">
+          <v-card color="surface" variant="flat" class="mb-4">
+            <v-card-title>
+              <v-icon icon="mdi-magnify" class="mr-2" />
+              搜索图谱
+            </v-card-title>
+            <v-card-text>
+              <v-text-field
+                v-model="searchKeyword"
+                placeholder="搜索节点或关系..."
+                prepend-inner-icon="mdi-magnify"
+                variant="outlined"
+                density="compact"
+                hide-details
+                clearable
+                @keyup.enter="handleSearch"
+                @click:clear="clearSearch"
+              />
+              <v-btn
+                color="primary"
+                size="small"
+                class="mt-2"
+                block
+                :loading="memoryStore.l3SearchLoading"
+                @click="handleSearch"
+              >
+                搜索
+              </v-btn>
+            </v-card-text>
+          </v-card>
+
+          <v-card 
+            v-if="memoryStore.l3SearchResults.nodes.length > 0 || memoryStore.l3SearchResults.edges.length > 0" 
+            color="surface" 
+            variant="flat" 
+            class="mb-4"
+          >
+            <v-card-title class="d-flex align-center">
+              <v-icon icon="mdi-magnify" class="mr-2" />
+              搜索结果
+              <v-spacer />
+              <v-btn
+                icon="mdi-close"
+                variant="text"
+                size="small"
+                @click="clearSearch"
+              />
+            </v-card-title>
+            <v-card-text>
+              <div v-if="memoryStore.l3SearchResults.nodes.length > 0" class="mb-3">
+                <div class="text-caption text-medium-emphasis mb-2">节点 ({{ memoryStore.l3SearchResults.nodes.length }})</div>
+                <v-list density="compact" class="pa-0 bg-transparent">
+                  <v-list-item
+                    v-for="node in memoryStore.l3SearchResults.nodes"
+                    :key="node.id"
+                    :prepend-icon="getNodeIcon(node.label)"
+                    @click="expandFromSearchNode(node.id)"
+                  >
+                    <v-list-item-title>{{ node.name || node.id }}</v-list-item-title>
+                    <v-list-item-subtitle>{{ node.label }}</v-list-item-subtitle>
+                    <template #append>
+                      <v-chip size="x-small" :color="getTypeColor(node.label)" variant="tonal">
+                        {{ (node.confidence * 100).toFixed(0) }}%
+                      </v-chip>
+                    </template>
+                  </v-list-item>
+                </v-list>
+              </div>
+              <div v-if="memoryStore.l3SearchResults.edges.length > 0">
+                <div class="text-caption text-medium-emphasis mb-2">关系 ({{ memoryStore.l3SearchResults.edges.length }})</div>
+                <v-list density="compact" class="pa-0 bg-transparent">
+                  <v-list-item
+                    v-for="(edge, idx) in memoryStore.l3SearchResults.edges"
+                    :key="idx"
+                    prepend-icon="mdi-arrow-right-bold"
+                    @click="expandFromSearchEdge(edge)"
+                  >
+                    <v-list-item-title>{{ edge.relation }}</v-list-item-title>
+                    <v-list-item-subtitle>
+                      {{ edge.source.name }} → {{ edge.target.name }}
+                    </v-list-item-subtitle>
+                  </v-list-item>
+                </v-list>
+              </div>
+            </v-card-text>
+          </v-card>
+
           <v-card color="surface" variant="flat" class="mb-4">
             <v-card-title>
               <v-icon icon="mdi-tune" class="mr-2" />
@@ -130,7 +271,6 @@
                   :max="3"
                   :step="1"
                   thumb-label
-                  ticks
                 />
               </div>
 
@@ -142,7 +282,6 @@
                   :max="50"
                   :step="5"
                   thumb-label
-                  ticks
                 />
               </div>
 
@@ -234,7 +373,7 @@
               <v-alert type="info" variant="tonal" density="compact">
                 <div class="text-body-2">
                   <strong>L3 知识图谱（Semantic Memory）</strong> 是结构化的长期记忆，存储实体关系和核心特征。
-                  支持多跳推理和图谱可视化。点击节点可查看详情并从此节点拓展图谱。
+                  支持多跳推理和图谱可视化。点击节点或边可查看详情并从此展开图谱。使用搜索功能快速定位节点和关系。
                 </div>
               </v-alert>
             </v-card-text>
@@ -261,6 +400,17 @@ const mainGroup = ref<SVGGElement | null>(null)
 
 const selectedNode = ref<KGNode | null>(null)
 const popupPosition = ref<{ x: number; y: number } | null>(null)
+
+const selectedEdge = ref<{
+  source: string
+  target: string
+  relation: string
+  sourceNode: KGNode
+  targetNode: KGNode
+} | null>(null)
+const edgePopupPosition = ref<{ x: number; y: number } | null>(null)
+
+const searchKeyword = ref('')
 
 const currentZoom = ref(1)
 const currentTranslate = ref({ x: 0, y: 0 })
@@ -294,11 +444,43 @@ const closePopup = () => {
   popupPosition.value = null
 }
 
+const closeEdgePopup = () => {
+  selectedEdge.value = null
+  edgePopupPosition.value = null
+}
+
 const expandFromSelected = () => {
   if (selectedNode.value) {
     memoryStore.expandFromNode(selectedNode.value.id)
     closePopup()
   }
+}
+
+const expandFromEdge = (type: 'source' | 'target') => {
+  if (selectedEdge.value) {
+    const nodeId = type === 'source' ? selectedEdge.value.source : selectedEdge.value.target
+    memoryStore.expandFromNode(nodeId)
+    closeEdgePopup()
+  }
+}
+
+const handleSearch = () => {
+  if (searchKeyword.value.trim()) {
+    memoryStore.searchL3(searchKeyword.value.trim())
+  }
+}
+
+const clearSearch = () => {
+  searchKeyword.value = ''
+  memoryStore.clearL3Search()
+}
+
+const expandFromSearchNode = (nodeId: string) => {
+  memoryStore.expandFromNode(nodeId)
+}
+
+const expandFromSearchEdge = (edge: { source: { id: string }, target: { id: string } }) => {
+  memoryStore.expandFromNode(edge.source.id)
 }
 
 const getNodeIcon = (label: string): string => {
@@ -386,9 +568,11 @@ const renderGraph = () => {
   })
 
   const edgesLayer = mainGroup.value.querySelector('.edges-layer') as SVGGElement
+  const edgeLabelsLayer = mainGroup.value.querySelector('.edge-labels-layer') as SVGGElement
   const nodesLayer = mainGroup.value.querySelector('.nodes-layer') as SVGGElement
 
   edgesLayer.innerHTML = ''
+  edgeLabelsLayer.innerHTML = ''
   nodesLayer.innerHTML = ''
 
   edges.forEach(edge => {
@@ -396,6 +580,9 @@ const renderGraph = () => {
     const target = nodePositions.get(edge.target)
 
     if (!source || !target) return
+
+    const midX = (source.x + target.x) / 2
+    const midY = (source.y + target.y) / 2
 
     const line = document.createElementNS('http://www.w3.org/2000/svg', 'line')
     line.setAttribute('x1', String(source.x))
@@ -407,12 +594,56 @@ const renderGraph = () => {
     line.setAttribute('stroke-opacity', '0.5')
     line.setAttribute('marker-end', 'url(#arrowhead)')
     line.classList.add('graph-edge')
+    line.style.cursor = 'pointer'
 
-    const title = document.createElementNS('http://www.w3.org/2000/svg', 'title')
-    title.textContent = edge.relation
-    line.appendChild(title)
+    const sourceNode = nodeMap.get(edge.source)
+    const targetNode = nodeMap.get(edge.target)
+
+    line.addEventListener('click', (event: MouseEvent) => {
+      if (sourceNode && targetNode) {
+        selectedEdge.value = {
+          source: edge.source,
+          target: edge.target,
+          relation: edge.relation,
+          sourceNode,
+          targetNode
+        }
+        const containerRect = graphContainer.value?.getBoundingClientRect()
+        if (containerRect) {
+          edgePopupPosition.value = {
+            x: event.clientX - containerRect.left + 10,
+            y: event.clientY - containerRect.top + 10
+          }
+        }
+      }
+      event.stopPropagation()
+    })
+
+    line.addEventListener('mouseenter', () => {
+      line.setAttribute('stroke-opacity', '1')
+      line.setAttribute('stroke-width', '2.5')
+    })
+
+    line.addEventListener('mouseleave', () => {
+      line.setAttribute('stroke-opacity', '0.5')
+      line.setAttribute('stroke-width', '1.5')
+    })
 
     edgesLayer.appendChild(line)
+
+    const labelText = document.createElementNS('http://www.w3.org/2000/svg', 'text')
+    
+    labelText.setAttribute('x', String(midX))
+    labelText.setAttribute('y', String(midY))
+    labelText.setAttribute('text-anchor', 'middle')
+    labelText.setAttribute('dominant-baseline', 'middle')
+    labelText.setAttribute('fill', 'currentColor')
+    labelText.setAttribute('font-size', '10')
+    labelText.setAttribute('font-weight', '500')
+    labelText.textContent = edge.relation
+    labelText.style.pointerEvents = 'none'
+
+    edgesLayer.appendChild(labelText)
   })
 
   nodes.forEach(node => {
@@ -444,6 +675,7 @@ const renderGraph = () => {
 
     g.addEventListener('click', (event: MouseEvent) => {
       selectedNode.value = node
+      closeEdgePopup()
       const containerRect = graphContainer.value?.getBoundingClientRect()
       if (containerRect) {
         popupPosition.value = {
@@ -515,12 +747,7 @@ onUnmounted(() => {
 }
 
 .graph-edge {
-  transition: stroke-opacity 0.2s ease;
-}
-
-.graph-edge:hover {
-  stroke-opacity: 1 !important;
-  stroke-width: 2;
+  transition: stroke-opacity 0.2s ease, stroke-width 0.2s ease;
 }
 
 .arrow-marker {

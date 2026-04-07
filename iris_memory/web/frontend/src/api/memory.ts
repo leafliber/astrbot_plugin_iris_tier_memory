@@ -96,3 +96,54 @@ export const getL3Graph = async (params?: L3GraphParams): Promise<L3GraphApiResp
   }
   return response
 }
+
+export interface L3SearchNodeResult {
+  id: string
+  label: string
+  name: string
+  content: string
+  confidence: number
+}
+
+export interface L3SearchEdgeResult {
+  source: {
+    id: string
+    label: string
+    name: string
+  }
+  target: {
+    id: string
+    label: string
+    name: string
+  }
+  relation: string
+  confidence: number
+}
+
+interface L3SearchNodesApiResponse extends ApiBaseResponse {
+  nodes: L3SearchNodeResult[]
+}
+
+interface L3SearchEdgesApiResponse extends ApiBaseResponse {
+  edges: L3SearchEdgeResult[]
+}
+
+export const searchL3Nodes = async (keyword: string, limit: number = 20): Promise<L3SearchNodeResult[]> => {
+  const response = await apiClient.get('/memory/l3/search/nodes', { 
+    params: { keyword, limit } 
+  }) as unknown as L3SearchNodesApiResponse
+  if (!response.success) {
+    throw new Error(response.error || '搜索节点失败')
+  }
+  return response.nodes || []
+}
+
+export const searchL3Edges = async (keyword: string, limit: number = 20): Promise<L3SearchEdgeResult[]> => {
+  const response = await apiClient.get('/memory/l3/search/edges', { 
+    params: { keyword, limit } 
+  }) as unknown as L3SearchEdgesApiResponse
+  if (!response.success) {
+    throw new Error(response.error || '搜索边失败')
+  }
+  return response.edges || []
+}

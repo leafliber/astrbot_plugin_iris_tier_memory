@@ -345,6 +345,91 @@ class L3KGAdapter(Component):
             logger.error(f"获取所有节点失败：{e}")
             return []
     
+    async def search_nodes(self, keyword: str, limit: int = 20) -> list[dict]:
+        """搜索节点
+        
+        Args:
+            keyword: 搜索关键词（匹配name或content）
+            limit: 最大返回数量
+            
+        Returns:
+            匹配的节点列表
+        """
+        if not self._is_available:
+            return []
+        
+        try:
+            escaped_keyword = keyword.replace("\\", "\\\\").replace("'", "\\'")
+            result = self._conn.execute(f"""
+                MATCH (e:Entity)
+                WHERE e.name CONTAINS '{escaped_keyword}' OR e.content CONTAINS '{escaped_keyword}'
+                RETURN e.id, e.label, e.name, e.content, e.confidence
+                LIMIT {limit}
+            """)
+            
+            nodes = []
+            for row in result:
+                nodes.append({
+                    "id": row[0],
+                    "label": row[1],
+                    "name": row[2],
+                    "content": row[3],
+                    "confidence": row[4]
+                })
+            
+            logger.debug(f"搜索节点 '{keyword}' 找到 {len(nodes)} 个结果")
+            return nodes
+            
+        except Exception as e:
+            logger.error(f"搜索节点失败：{e}")
+            return []
+    
+    async def search_edges(self, keyword: str, limit: int = 20) -> list[dict]:
+        """搜索边
+        
+        Args:
+            keyword: 搜索关键词（匹配relation_type）
+            limit: 最大返回数量
+            
+        Returns:
+            匹配的边列表（包含source和target节点信息）
+        """
+        if not self._is_available:
+            return []
+        
+        try:
+            escaped_keyword = keyword.replace("\\", "\\\\").replace("'", "\\'")
+            result = self._conn.execute(f"""
+                MATCH (a:Entity)-[r:Related]->(b:Entity)
+                WHERE r.relation_type CONTAINS '{escaped_keyword}'
+                RETURN a.id, a.label, a.name, b.id, b.label, b.name, r.relation_type, r.confidence
+                LIMIT {limit}
+            """)
+            
+            edges = []
+            for row in result:
+                edges.append({
+                    "source": {
+                        "id": row[0],
+                        "label": row[1],
+                        "name": row[2]
+                    },
+                    "target": {
+                        "id": row[3],
+                        "label": row[4],
+                        "name": row[5]
+                    },
+                    "relation": row[6],
+                    "confidence": row[7]
+                })
+            
+            logger.debug(f"搜索边 '{keyword}' 找到 {len(edges)} 个结果")
+            return edges
+            
+        except Exception as e:
+            logger.error(f"搜索边失败：{e}")
+            return []
+    
     async def get_random_person_node(self) -> Optional[dict]:
         if not self._is_available:
             return None

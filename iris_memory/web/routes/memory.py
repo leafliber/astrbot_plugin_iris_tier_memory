@@ -407,3 +407,122 @@ async def get_l2_stats():
             'success': False,
             'error': str(e)
         }), 500
+
+
+@memory_bp.route('/l3/search/nodes', methods=['GET'])
+@dashboard_auth.require_auth
+async def search_l3_nodes():
+    """
+    搜索 L3 知识图谱节点
+    
+    Query Params:
+        keyword: 搜索关键词
+        limit: 返回数量（默认20）
+    
+    Response:
+        {
+            "success": true,
+            "nodes": [
+                {
+                    "id": "node_id",
+                    "label": "Person",
+                    "name": "节点名称",
+                    "content": "节点内容",
+                    "confidence": 0.9
+                }
+            ]
+        }
+    """
+    try:
+        keyword = request.args.get('keyword', '')
+        limit = request.args.get('limit', default=20, type=int)
+        
+        if not keyword:
+            return jsonify({
+                'success': False,
+                'error': '搜索关键词不能为空'
+            }), 400
+        
+        manager = get_component_manager()
+        l3_adapter = manager.get_component("l3_kg")
+        
+        if not l3_adapter or not l3_adapter.is_available:
+            return jsonify({
+                'success': False,
+                'error': 'L3 知识图谱不可用'
+            }), 503
+        
+        nodes = await l3_adapter.search_nodes(keyword, limit)
+        
+        logger.info(f"搜索L3节点成功：关键词='{keyword}', 结果数={len(nodes)}")
+        
+        return jsonify({
+            'success': True,
+            'nodes': nodes
+        })
+    
+    except Exception as e:
+        logger.error(f"搜索 L3 节点失败：{e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@memory_bp.route('/l3/search/edges', methods=['GET'])
+@dashboard_auth.require_auth
+async def search_l3_edges():
+    """
+    搜索 L3 知识图谱边
+    
+    Query Params:
+        keyword: 搜索关键词
+        limit: 返回数量（默认20）
+    
+    Response:
+        {
+            "success": true,
+            "edges": [
+                {
+                    "source": {"id": "...", "label": "...", "name": "..."},
+                    "target": {"id": "...", "label": "...", "name": "..."},
+                    "relation": "关系类型",
+                    "confidence": 0.9
+                }
+            ]
+        }
+    """
+    try:
+        keyword = request.args.get('keyword', '')
+        limit = request.args.get('limit', default=20, type=int)
+        
+        if not keyword:
+            return jsonify({
+                'success': False,
+                'error': '搜索关键词不能为空'
+            }), 400
+        
+        manager = get_component_manager()
+        l3_adapter = manager.get_component("l3_kg")
+        
+        if not l3_adapter or not l3_adapter.is_available:
+            return jsonify({
+                'success': False,
+                'error': 'L3 知识图谱不可用'
+            }), 503
+        
+        edges = await l3_adapter.search_edges(keyword, limit)
+        
+        logger.info(f"搜索L3边成功：关键词='{keyword}', 结果数={len(edges)}")
+        
+        return jsonify({
+            'success': True,
+            'edges': edges
+        })
+    
+    except Exception as e:
+        logger.error(f"搜索 L3 边失败：{e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
