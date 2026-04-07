@@ -495,12 +495,12 @@ class L1Buffer(Component):
     ) -> None:
         """总结后更新画像（内部函数）
         
-        更新群聊画像的当前话题和活跃用户列表。
+        更新群聊画像和用户画像的中期字段。
         
         Args:
             group_id: 群聊ID
             messages: 被总结的消息列表
-            summary: 总结文本
+            summary: 总结文本（JSON 格式）
         """
         config = get_config()
         if not config.get("profile.enable"):
@@ -514,14 +514,19 @@ class L1Buffer(Component):
             return
         
         try:
-            from iris_memory.profile import GroupProfileManager
+            from iris_memory.profile import GroupProfileManager, UserProfileManager
+            from .summarizer import parse_summary_response
+            
+            parsed = parse_summary_response(summary)
             
             group_manager = GroupProfileManager(profile_storage)
+            user_manager = UserProfileManager(profile_storage)
             
             active_users = list(
                 set(msg.source for msg in messages if msg.role == "user")
             )
             
+            name_to_id = self._build_name_to_id_map(messages)
             current_topic = summary[:100] if len(summary) > 100 else summary
             
             await group_manager.update_simple_fields(
@@ -530,10 +535,56 @@ class L1Buffer(Component):
                 active_users=active_users
             )
             
-            logger.debug(f"总结后更新群聊画像: {group_id}")
+            group_profile = parsed.get("group_profile", {})
+            if group_profile:
+                interests = group_profile.get("interests", [])
+                atmosphere_tags = group_profile.get("atmosphere_tags", [])
+                common_expressions = group_profile.get("common_expressions", [])
+                
+                if interests or atmosphere_tags or common_expressions:
+                    await group_manager.update_from_analysis(
+                        group_id=group_id,
+                        interests=interests,
+                        atmosphere_tags=atmosphere_tags,
+                        common_expressions=common_expressions
+                    )
+                    logger.info(f"更新群聊画像分析字段: {group_id}")
+            
+            user_profiles = parsed.get("user_profiles", {})
+            if user_profiles:
+                effective_group_id = group_id if config.get("isolation_config.enable_group_isolation") else "default"
+                
+                for user_name, profile_data in user_profiles.items():
+                    user_id = name_to_id.get(user_name)
+                    if not user_id:
+                        for msg in messages:
+                            if msg.role == "user" and msg.metadata:
+                                msg_user_name = msg.metadata.get("user_name")
+                                if msg_user_name == user_name and msg.source:
+                                    user_id = msg.source
+                                    break
+                    
+                    if user_id:
+                        emotional_state = profile_data.get("emotional_state", "")
+                        personality_tags = profile_data.get("personality_tags", [])
+                        interests = profile_data.get("interests", [])
+                        language_style = profile_data.get("language_style", "")
+                        
+                        if emotional_state or personality_tags or interests:
+                            await user_manager.update_from_analysis(
+                                user_id=user_id,
+                                group_id=effective_group_id,
+                                emotional_state=emotional_state,
+                                personality_tags=personality_tags,
+                                interests=interests,
+                                language_style=language_style if language_style else None
+                            )
+                            logger.info(f"更新用户画像分析字段: {user_name} ({user_id})")
+            
+            logger.debug(f"总结后更新画像完成: {group_id}")
         
         except Exception as e:
-            logger.error(f"更新群聊画像失败: {e}", exc_info=True)
+            logger.error(f"更新画像失败: {e}", exc_info=True)
     
     async def _write_summary_to_l2(
         self,
@@ -549,7 +600,7 @@ class L1Buffer(Component):
         Args:
             group_id: 群聊ID
             messages: 被总结的消息列表
-            summary: 总结文本（分条格式）
+            summary: 总结文本（JSON 格式或分条格式）
         
         Returns:
             第一条记忆 ID，失败时返回 None
@@ -569,13 +620,18 @@ class L1Buffer(Component):
         
         try:
             from iris_memory.l2_memory import MemoryRetriever
+            from .summarizer import parse_summary_response
             
             retriever = MemoryRetriever(self._component_manager)
             
             name_to_id = self._build_name_to_id_map(messages)
             active_users = list(set(msg.source for msg in messages if msg.role == "user" and msg.source))
             
-            summary_items = self._parse_summary_items(summary)
+            parsed = parse_summary_response(summary)
+            summary_items = parsed.get("memories", [])
+            
+            if not summary_items:
+                summary_items = self._parse_summary_items(summary)
             
             if not summary_items:
                 logger.warning(f"总结解析后无有效条目，原内容：{summary[:100]}...")
@@ -583,6 +639,9 @@ class L1Buffer(Component):
             
             memory_ids = []
             for item in summary_items:
+                if item.startswith("- "):
+                    item = item[2:]
+                
                 user_id = self._extract_user_from_item(item, name_to_id)
                 
                 metadata = {
