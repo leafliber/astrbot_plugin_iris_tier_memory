@@ -873,3 +873,80 @@ class L2MemoryAdapter(Component):
         except Exception as e:
             logger.error(f"标记记忆失败: {e}", exc_info=True)
             return False
+    
+    async def get_latest_memories(
+        self,
+        limit: int = 20,
+        group_id: Optional[str] = None
+    ) -> List[MemorySearchResult]:
+        """获取最新记忆
+        
+        按时间戳倒序获取最新的记忆条目。
+        
+        Args:
+            limit: 返回数量，默认 20
+            group_id: 群聊 ID（可选，用于隔离）
+        
+        Returns:
+            最新记忆列表
+        
+        Examples:
+            >>> memories = await adapter.get_latest_memories(limit=10)
+            >>> len(memories)
+            10
+        """
+        if not self._is_available:
+            return []
+        
+        try:
+            loop = asyncio.get_event_loop()
+            
+            query_params: Dict[str, Any] = {
+                "n_results": limit * 3
+            }
+            
+            if group_id:
+                query_params["where"] = {"group_id": group_id}
+            
+            results = await loop.run_in_executor(
+                None,
+                lambda: self._collection.get(
+                    include=["documents", "metadatas"],
+                    **({"where": query_params["where"]} if "where" in query_params else {})
+                )
+            )
+            
+            if not results["ids"]:
+                return []
+            
+            entries_with_time = []
+            for i, memory_id in enumerate(results["ids"]):
+                meta = results["metadatas"][i] if results.get("metadatas") else {}
+                timestamp = meta.get("timestamp", "")
+                entries_with_time.append({
+                    "id": memory_id,
+                    "content": results["documents"][i],
+                    "metadata": meta,
+                    "timestamp": timestamp
+                })
+            
+            entries_with_time.sort(key=lambda x: x["timestamp"], reverse=True)
+            
+            search_results = []
+            for entry in entries_with_time[:limit]:
+                memory_entry = MemoryEntry(
+                    id=entry["id"],
+                    content=entry["content"],
+                    metadata=entry["metadata"]
+                )
+                search_results.append(MemorySearchResult(
+                    entry=memory_entry,
+                    score=1.0,
+                    distance=0.0
+                ))
+            
+            return search_results
+            
+        except Exception as e:
+            logger.error(f"获取最新记忆失败: {e}", exc_info=True)
+            return []

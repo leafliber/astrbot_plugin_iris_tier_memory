@@ -77,6 +77,18 @@ export const getL2Stats = async (): Promise<{ total_count: number; group_count: 
   return response.stats || { total_count: 0, group_count: 0 }
 }
 
+export const getLatestL2Memories = async (limit: number = 20, groupId?: string): Promise<L2SearchResponse> => {
+  const params: Record<string, unknown> = { limit }
+  if (groupId) {
+    params.group_id = groupId
+  }
+  const response = await apiClient.get('/memory/l2/latest', { params }) as unknown as L2SearchApiResponse
+  if (!response.success) {
+    throw new Error(response.error || '获取最新L2记忆失败')
+  }
+  return { results: response.results || [] }
+}
+
 export const getL3Graph = async (params?: L3GraphParams): Promise<L3GraphApiResponse> => {
   const response = await apiClient.get('/memory/l3/graph', { params }) as unknown as L3GraphApiResponse
   if (!response.success) {

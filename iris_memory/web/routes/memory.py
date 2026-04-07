@@ -93,6 +93,73 @@ async def search_l2_memory():
         }), 500
 
 
+@memory_bp.route('/l2/latest', methods=['GET'])
+@dashboard_auth.require_auth
+async def get_latest_l2_memories():
+    """
+    获取最新的 L2 记忆
+    
+    Query Params:
+        limit: 返回数量（默认 20，可选值：10, 20, 50, 100）
+        group_id: 群聊ID（可选）
+    
+    Response:
+        {
+            "success": true,
+            "results": [
+                {
+                    "content": "记忆内容",
+                    "score": 1.0,
+                    "metadata": {},
+                    "timestamp": "2026-03-29T12:00:00"
+                }
+            ]
+        }
+    """
+    try:
+        limit = request.args.get('limit', default=20, type=int)
+        group_id = request.args.get('group_id')
+        
+        valid_limits = [10, 20, 50, 100]
+        if limit not in valid_limits:
+            limit = 20
+        
+        manager = get_component_manager()
+        l2_adapter = manager.get_component("l2_memory")
+        
+        if not l2_adapter or not l2_adapter.is_available:
+            return jsonify({
+                'success': False,
+                'error': 'L2 记忆库不可用'
+            }), 503
+        
+        results = await l2_adapter.get_latest_memories(limit=limit, group_id=group_id)
+        
+        formatted_results = [
+            {
+                'content': r.entry.content,
+                'score': r.score,
+                'metadata': r.entry.metadata,
+                'timestamp': r.entry.metadata.get('timestamp')
+            }
+            for r in results
+        ]
+        
+        logger.info(f"获取最新L2记忆成功：limit={limit}, 结果数={len(results)}")
+        
+        return jsonify({
+            'success': True,
+            'results': formatted_results
+        })
+    
+    except Exception as e:
+        logger.error(f"获取最新 L2 记忆失败：{e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @memory_bp.route('/l1/list', methods=['GET'])
 @dashboard_auth.require_auth
 async def list_l1_buffer():

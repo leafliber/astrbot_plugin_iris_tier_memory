@@ -15,6 +15,10 @@ export const useMemoryStore = defineStore('memory', () => {
   const l2TotalCount = ref(0)
   const l2GroupCount = ref(0)
 
+  const l2LatestResults = ref<L2Memory[]>([])
+  const l2LatestLoading = ref(false)
+  const l2LatestLimit = ref(20)
+
   const l3Graph = ref<KGGraph>({ nodes: [], edges: [] })
   const l3StartNode = ref<KGNode | null>(null)
   const l3Loading = ref(false)
@@ -125,6 +129,26 @@ export const useMemoryStore = defineStore('memory', () => {
     l2Query.value = ''
   }
 
+  const fetchLatestL2Memories = async (limit?: number, groupId?: string) => {
+    l2LatestLoading.value = true
+    if (limit) {
+      l2LatestLimit.value = limit
+    }
+    try {
+      const response = await memoryApi.getLatestL2Memories(l2LatestLimit.value, groupId)
+      l2LatestResults.value = response.results
+    } catch (error) {
+      console.error('获取最新L2记忆失败:', error)
+      l2LatestResults.value = []
+    } finally {
+      l2LatestLoading.value = false
+    }
+  }
+
+  const setL2LatestLimit = (limit: number) => {
+    l2LatestLimit.value = limit
+  }
+
   return {
     l1Messages,
     l1Loading,
@@ -135,6 +159,9 @@ export const useMemoryStore = defineStore('memory', () => {
     l2Query,
     l2TotalCount,
     l2GroupCount,
+    l2LatestResults,
+    l2LatestLoading,
+    l2LatestLimit,
     l3Graph,
     l3StartNode,
     l3Loading,
@@ -148,6 +175,8 @@ export const useMemoryStore = defineStore('memory', () => {
     expandFromNode,
     setDepth,
     setMaxNodes,
-    clearL2Results
+    clearL2Results,
+    fetchLatestL2Memories,
+    setL2LatestLimit
   }
 })
