@@ -97,7 +97,10 @@ async def _inject_l1_context(
     else:
         req.contexts = context_list
     
-    req._l1_context_count = l1_count
+    try:
+        req._l1_context_count = l1_count
+    except AttributeError:
+        pass
     
     logger.debug(f"已注入 {len(messages)} 条 L1 上下文消息到群聊 {group_id}")
 
