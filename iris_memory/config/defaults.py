@@ -115,6 +115,7 @@ class HiddenConfig:
     debug_mode: bool = False                # 启用调试模式
     verbose_logging: bool = False           # 详细日志输出
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    enable_context_logging: bool = False    # 启用 LLM 上下文日志输出
     
     # 性能调优
     chromadb_batch_size: int = 100          # ChromaDB 批量写入大小

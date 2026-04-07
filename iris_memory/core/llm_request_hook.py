@@ -46,6 +46,8 @@ async def preprocess_llm_request(
     await _inject_l3_knowledge_graph(event, req, component_manager, l2_results)
     await _inject_user_profile(event, req, component_manager)
     await _parse_images_if_related_mode(event, req, component_manager)
+    
+    _log_final_context(req)
 
 
 async def _inject_l1_context(
@@ -88,10 +90,14 @@ async def _inject_l1_context(
                 content = f"[{user_name}]: {content}"
         context_list.append({"role": msg.role, "content": content})
     
+    l1_count = len(context_list)
+    
     if req.contexts:
         req.contexts = context_list + req.contexts
     else:
         req.contexts = context_list
+    
+    req._l1_context_count = l1_count
     
     logger.debug(f"已注入 {len(messages)} 条 L1 上下文消息到群聊 {group_id}")
 
@@ -404,17 +410,12 @@ def _format_l2_memories_for_injection(
     if not memories:
         return ""
     
-    lines = ["[历史记忆]"]
+    lines = ["【相关记忆】"]
     
-    for i, memory in enumerate(memories, 1):
-        # 添加记忆内容
-        lines.append(f"{i}. {memory.entry.content}")
-        
-        # 可选：添加置信度（如果足够高）
-        if memory.entry.confidence and memory.entry.confidence > 0.9:
-            lines.append(f"   （置信度：{memory.entry.confidence:.2f}）")
+    for memory in memories:
+        lines.append(f"• {memory.entry.content}")
     
-    return chr(10).join(lines)
+    return "\n".join(lines)
 
 
 def _format_profiles_for_injection(
@@ -430,43 +431,39 @@ def _format_profiles_for_injection(
     Returns:
         格式化的画像文本
     """
-    lines = ["[画像信息]"]
+    parts = []
     
-    # 群聊画像
+    group_parts = []
     if group_profile.current_topic:
-        lines.append(f"群聊当前话题: {group_profile.current_topic}")
-    
+        group_parts.append(f"话题:{group_profile.current_topic}")
     if group_profile.interests:
-        lines.append(f"群聊兴趣: {', '.join(group_profile.interests[:5])}")
-    
+        group_parts.append(f"兴趣:{','.join(group_profile.interests[:3])}")
     if group_profile.atmosphere_tags:
-        lines.append(f"群聊氛围: {', '.join(group_profile.atmosphere_tags)}")
-    
+        group_parts.append(f"氛围:{','.join(group_profile.atmosphere_tags[:3])}")
     if group_profile.blacklist_topics:
-        lines.append(f"⚠️ 禁忌话题: {', '.join(group_profile.blacklist_topics)}")
+        group_parts.append(f"禁忌:{','.join(group_profile.blacklist_topics)}")
     
-    lines.append("")
+    if group_parts:
+        parts.append(f"【群聊】{' | '.join(group_parts)}")
     
-    # 用户画像
+    user_parts = []
     if user_profile.user_name:
-        lines.append(f"用户昵称: {user_profile.user_name}")
-    
+        user_parts.append(f"昵称:{user_profile.user_name}")
     if user_profile.current_emotional_state:
-        lines.append(f"用户当前情绪: {user_profile.current_emotional_state}")
-    
+        user_parts.append(f"情绪:{user_profile.current_emotional_state}")
     if user_profile.personality_tags:
-        lines.append(f"用户性格: {', '.join(user_profile.personality_tags)}")
-    
+        user_parts.append(f"性格:{','.join(user_profile.personality_tags[:3])}")
     if user_profile.interests:
-        lines.append(f"用户兴趣: {', '.join(user_profile.interests[:5])}")
-    
+        user_parts.append(f"兴趣:{','.join(user_profile.interests[:3])}")
     if user_profile.bot_relationship:
-        lines.append(f"用户对你的称呼: {user_profile.bot_relationship}")
-    
+        user_parts.append(f"称呼:{user_profile.bot_relationship}")
     if user_profile.taboo_topics:
-        lines.append(f"⚠️ 用户禁忌话题: {', '.join(user_profile.taboo_topics)}")
+        user_parts.append(f"禁忌:{','.join(user_profile.taboo_topics)}")
     
-    return chr(10).join(lines)
+    if user_parts:
+        parts.append(f"【用户】{' | '.join(user_parts)}")
+    
+    return "\n".join(parts) if parts else ""
 
 
 async def _parse_images_if_related_mode(
@@ -550,14 +547,16 @@ async def _parse_images_if_related_mode(
     if cached_results:
         logger.debug(f"从缓存读取 {len(cached_results)} 条图片解析结果")
     
+    all_image_results = []
+    
+    for img_item, cached in cached_results:
+        all_image_results.append({
+            "timestamp": img_item.timestamp,
+            "content": cached.content
+        })
+    
     if not images_to_parse:
-        for img_item, cached in cached_results:
-            if req.contexts is None:
-                req.contexts = []
-            req.contexts.append({
-                "role": "user",
-                "content": f"[图片内容] {cached.content}"
-            })
+        _insert_images_by_time(req, all_image_results)
         return
     
     if quota_manager and quota_manager.is_available:
@@ -615,26 +614,92 @@ async def _parse_images_if_related_mode(
         
         l1_buffer.mark_image_parsed(group_id, img_item.image_hash, ImageParseStatus.SUCCESS)
         
-        if req.contexts is None:
-            req.contexts = []
-        req.contexts.append({
-            "role": "user",
-            "content": f"[图片内容] {result.content}"
+        all_image_results.append({
+            "timestamp": img_item.timestamp,
+            "content": result.content
         })
         
         success_count += 1
     
-    for img_item, cached in cached_results:
-        if req.contexts is None:
-            req.contexts = []
-        req.contexts.append({
-            "role": "user",
-            "content": f"[图片内容] {cached.content}"
-        })
+    _insert_images_by_time(req, all_image_results)
     
-    total_injected = success_count + len(cached_results)
+    total_injected = len(all_image_results)
     if total_injected > 0:
         logger.info(
             f"已注入 {total_injected} 条图片解析结果到 LLM 上下文 "
             f"（新解析 {success_count}，缓存 {len(cached_results)}）"
         )
+
+
+def _insert_images_by_time(
+    req: "ProviderRequest",
+    image_results: list
+) -> None:
+    """按时间顺序插入图片解析结果
+    
+    将图片解析结果按时间戳排序后，插入到 contexts 中的正确位置。
+    图片应该紧跟在 L1 历史消息之后、当前用户消息之前。
+    
+    Args:
+        req: LLM 提供者请求对象
+        image_results: 图片解析结果列表，每项包含 timestamp 和 content
+    """
+    if not image_results:
+        return
+    
+    if req.contexts is None:
+        req.contexts = []
+    
+    image_results.sort(key=lambda x: x["timestamp"])
+    
+    insert_pos = getattr(req, '_l1_context_count', 0)
+    
+    for img in image_results:
+        req.contexts.insert(insert_pos, {
+            "role": "user",
+            "content": f"[图片] {img['content']}"
+        })
+        insert_pos += 1
+
+
+def _log_final_context(req: "ProviderRequest") -> None:
+    """输出最终上下文内容的 debug 日志
+    
+    在所有注入完成后，输出完整的上下文信息用于问题排查。
+    
+    Args:
+        req: LLM 提供者请求对象
+    """
+    from iris_memory.config import get_config
+    
+    config = get_config()
+    if not config.get("enable_context_logging", False):
+        return
+    
+    log_parts = ["\n" + "=" * 60 + "\n[LLM 请求上下文详情]\n" + "=" * 60]
+    
+    if req.prompt:
+        log_parts.append(f"\n[System Prompt]\n{'-' * 40}\n{req.prompt}\n{'-' * 40}")
+    else:
+        log_parts.append("\n[System Prompt]\n(无)")
+    
+    if req.contexts:
+        log_parts.append(f"\n[Contexts] (共 {len(req.contexts)} 条) - 群聊当前对话，你需要在这之后发言")
+        for i, ctx in enumerate(req.contexts, 1):
+            role = ctx.get("role", "unknown")
+            content = ctx.get("content", "")
+            if len(content) > 200:
+                content = content[:200] + "..."
+            log_parts.append(f"  [{i}] {role}: {content}")
+    else:
+        log_parts.append("\n[Contexts]\n(无)")
+    
+    if hasattr(req, 'functions') and req.functions:
+        log_parts.append(f"\n[Functions] (共 {len(req.functions)} 个)")
+        for i, func in enumerate(req.functions, 1):
+            name = func.get("name", "unknown") if isinstance(func, dict) else getattr(func, "name", "unknown")
+            log_parts.append(f"  [{i}] {name}")
+    
+    log_parts.append("\n" + "=" * 60)
+    
+    logger.debug("\n".join(log_parts))

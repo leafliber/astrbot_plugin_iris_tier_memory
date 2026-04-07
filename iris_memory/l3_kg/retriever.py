@@ -112,31 +112,29 @@ class GraphRetriever:
         if not nodes:
             return ""
         
-        lines = ["## 知识图谱关联信息"]
+        lines = ["【知识图谱】"]
         
-        # 按类型分组节点
-        nodes_by_type = {}
+        node_lines = []
         for node in nodes:
-            label = node.get("label", "Unknown")
-            if label not in nodes_by_type:
-                nodes_by_type[label] = []
-            nodes_by_type[label].append(node)
+            name = node.get("name", "")
+            content = node.get("content", "")
+            if name and content:
+                node_lines.append(f"{name}:{content}")
+            elif name:
+                node_lines.append(name)
         
-        # 输出节点
-        for label, type_nodes in nodes_by_type.items():
-            lines.append(f"\n### {label}")
-            for node in type_nodes:
-                name = node.get("name", "未命名")
-                content = node.get("content", "")
-                lines.append(f"- {name}: {content}")
+        if node_lines:
+            lines.append("实体: " + " | ".join(node_lines[:10]))
         
-        # 输出关系
         if edges:
-            lines.append("\n### 关系")
-            for edge in edges:
-                source = edge.get("source_name", edge.get("source", "未知"))
-                target = edge.get("target_name", edge.get("target", "未知"))
-                relation = edge.get("relation_type", "RELATED_TO")
-                lines.append(f"- {source} --[{relation}]--> {target}")
+            edge_lines = []
+            for edge in edges[:10]:
+                source = edge.get("source_name", "")
+                target = edge.get("target_name", "")
+                relation = edge.get("relation_type", "")
+                if source and target:
+                    edge_lines.append(f"{source}-{relation}->{target}")
+            if edge_lines:
+                lines.append("关系: " + " | ".join(edge_lines))
         
         return "\n".join(lines)
