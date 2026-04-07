@@ -16,7 +16,7 @@
               :class="{ 'animate-spin': state.status === 'initializing' }"
             />
             <div class="text-body-2 mt-2">{{ getComponentName(key) }}</div>
-            <div class="text-caption" :class="getStatusTextClass(state.status)">
+            <div class="status-text" :class="getStatusTextClass(state.status)">
               {{ getStatusText(state.status) }}
             </div>
             <v-tooltip v-if="state.error" activator="parent" location="bottom">
@@ -35,6 +35,7 @@
         <v-card 
           color="surface" 
           variant="flat"
+          class="memory-card"
           :class="{ 'component-disabled': !isL1Available }"
         >
           <v-card-item>
@@ -44,27 +45,20 @@
               </v-avatar>
             </template>
             <v-card-title>L1 缓冲</v-card-title>
-            <v-card-subtitle>短期记忆 · 消息缓冲</v-card-subtitle>
+            <v-card-subtitle>短期记忆 · 消息缓冲（总合）</v-card-subtitle>
           </v-card-item>
-          <v-card-text v-if="isL1Available">
+          <v-card-text v-if="isL1Available" class="memory-content">
             <div class="d-flex justify-space-between align-center">
               <span class="text-h4 font-weight-bold">{{ l1QueueLength }}</span>
-              <span class="text-caption">/ {{ l1MaxCapacity || '∞' }}</span>
+              <span class="text-h5">♾️</span>
             </div>
-            <v-progress-linear
-              :model-value="l1UsagePercent"
-              color="primary"
-              height="8"
-              rounded
-              class="mt-2"
-            />
             <div class="text-caption text-medium-emphasis mt-1">
-              队列长度
+              队列长度（分群设计）
             </div>
           </v-card-text>
-          <v-card-text v-else class="text-center py-4">
+          <v-card-text v-else class="text-center py-4 memory-content">
             <v-icon icon="mdi-block-helper" color="error" size="large" />
-            <div class="text-caption text-medium-emphasis mt-2">
+            <div class="status-text-unavailable mt-2">
               {{ getComponentDisabledReason('l1_buffer') }}
             </div>
           </v-card-text>
@@ -75,6 +69,7 @@
         <v-card 
           color="surface" 
           variant="flat"
+          class="memory-card"
           :class="{ 'component-disabled': !isL2Available }"
         >
           <v-card-item>
@@ -86,7 +81,7 @@
             <v-card-title>L2 记忆</v-card-title>
             <v-card-subtitle>长期记忆 · 向量检索</v-card-subtitle>
           </v-card-item>
-          <v-card-text v-if="isL2Available">
+          <v-card-text v-if="isL2Available" class="memory-content">
             <div class="d-flex justify-space-between align-center">
               <span class="text-h4 font-weight-bold">{{ l2TotalCount }}</span>
               <span class="text-caption">条记忆</span>
@@ -98,9 +93,9 @@
               </div>
             </div>
           </v-card-text>
-          <v-card-text v-else class="text-center py-4">
+          <v-card-text v-else class="text-center py-4 memory-content">
             <v-icon icon="mdi-block-helper" color="error" size="large" />
-            <div class="text-caption text-medium-emphasis mt-2">
+            <div class="status-text-unavailable mt-2">
               {{ getComponentDisabledReason('l2_memory') }}
             </div>
           </v-card-text>
@@ -111,6 +106,7 @@
         <v-card 
           color="surface" 
           variant="flat"
+          class="memory-card"
           :class="{ 'component-disabled': !isL3Available }"
         >
           <v-card-item>
@@ -122,7 +118,7 @@
             <v-card-title>L3 知识图谱</v-card-title>
             <v-card-subtitle>结构化知识 · 关系网络</v-card-subtitle>
           </v-card-item>
-          <v-card-text v-if="isL3Available">
+          <v-card-text v-if="isL3Available" class="memory-content">
             <div class="d-flex justify-space-between">
               <div class="text-center">
                 <span class="text-h4 font-weight-bold">{{ kgNodeCount }}</span>
@@ -134,9 +130,9 @@
               </div>
             </div>
           </v-card-text>
-          <v-card-text v-else class="text-center py-4">
+          <v-card-text v-else class="text-center py-4 memory-content">
             <v-icon icon="mdi-block-helper" color="error" size="large" />
-            <div class="text-caption text-medium-emphasis mt-2">
+            <div class="status-text-unavailable mt-2">
               {{ getComponentDisabledReason('l3_kg') }}
             </div>
           </v-card-text>
@@ -395,5 +391,47 @@ onUnmounted(() => {
 
 .component-disabled {
   opacity: 0.6;
+}
+
+.memory-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.memory-card :deep(.v-card-item) {
+  flex-shrink: 0;
+}
+
+.memory-card :deep(.v-card-text) {
+  flex-grow: 1;
+}
+
+.memory-content {
+  min-height: 80px;
+}
+
+.status-text-unavailable {
+  font-size: 0.75rem;
+  color: rgb(var(--v-theme-error));
+  font-weight: 500;
+}
+
+.status-text {
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.status-text.text-success {
+  color: rgb(var(--v-theme-success));
+}
+
+.status-text.text-warning {
+  color: rgb(var(--v-theme-warning));
+}
+
+.status-text.text-error {
+  color: rgb(var(--v-theme-error));
 }
 </style>
