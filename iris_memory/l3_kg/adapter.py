@@ -165,6 +165,11 @@ class L3KGAdapter(Component):
     async def add_edge(self, edge: GraphEdge) -> bool:
         """添加关系边
         
+        如果边已存在，会合并信息：
+        - source_memory_ids: 追加新的来源记忆ID
+        - weight: 累加权重（最大1.0）
+        - confidence: 取最大置信度
+        
         Args:
             edge: 图谱边对象
             
@@ -175,36 +180,123 @@ class L3KGAdapter(Component):
             return False
         
         try:
-            map_literal = _build_map_literal(edge.properties)
+            existing_edge = await self._get_edge(
+                edge.source_id, 
+                edge.target_id, 
+                edge.relation_type
+            )
             
-            query = f"""
-                MATCH (src:Entity {{id: $source_id}})
-                MATCH (tgt:Entity {{id: $target_id}})
-                MERGE (src)-[r:Related {{relation_type: $relation_type}}]->(tgt)
-                SET r.weight = $weight,
-                    r.confidence = $confidence,
-                    r.access_count = $access_count,
-                    r.last_access_time = $last_access_time,
-                    r.created_time = $created_time,
-                    r.source_memory_id = $source_memory_id,
-                    r.properties = {map_literal}
-            """
-            self._conn.execute(query, {
-                "source_id": edge.source_id,
-                "target_id": edge.target_id,
-                "relation_type": edge.relation_type,
-                "weight": edge.weight,
-                "confidence": edge.confidence,
-                "access_count": edge.access_count,
-                "last_access_time": edge.last_access_time or datetime.now(),
-                "created_time": edge.created_time,
-                "source_memory_id": edge.source_memory_id,
-            })
-            logger.debug(f"边添加成功：{edge.generate_id()}")
+            if existing_edge:
+                existing_ids = existing_edge.get("source_memory_ids", "")
+                existing_list = [x.strip() for x in existing_ids.split(",") if x.strip()]
+                
+                if edge.source_memory_id and edge.source_memory_id not in existing_list:
+                    existing_list.append(edge.source_memory_id)
+                
+                new_weight = min(1.0, existing_edge.get("weight", 0.5) + edge.weight * 0.1)
+                new_confidence = max(existing_edge.get("confidence", 0.5), edge.confidence)
+                
+                merged_properties = dict(existing_edge.get("properties", {}))
+                merged_properties.update(edge.properties)
+                merged_properties["source_memory_ids"] = ",".join(existing_list)
+                
+                map_literal = _build_map_literal(merged_properties)
+                
+                query = f"""
+                    MATCH (src:Entity {{id: $source_id}})
+                    MATCH (tgt:Entity {{id: $target_id}})
+                    MATCH (src)-[r:Related {{relation_type: $relation_type}}]->(tgt)
+                    SET r.weight = $weight,
+                        r.confidence = $confidence,
+                        r.access_count = r.access_count + 1,
+                        r.last_access_time = $last_access_time,
+                        r.properties = {map_literal}
+                """
+                self._conn.execute(query, {
+                    "source_id": edge.source_id,
+                    "target_id": edge.target_id,
+                    "relation_type": edge.relation_type,
+                    "weight": new_weight,
+                    "confidence": new_confidence,
+                    "last_access_time": datetime.now(),
+                })
+                logger.debug(f"边合并成功：{edge.generate_id()}")
+            else:
+                properties = dict(edge.properties)
+                if edge.source_memory_id:
+                    properties["source_memory_ids"] = edge.source_memory_id
+                
+                map_literal = _build_map_literal(properties)
+                
+                query = f"""
+                    MATCH (src:Entity {{id: $source_id}})
+                    MATCH (tgt:Entity {{id: $target_id}})
+                    MERGE (src)-[r:Related {{relation_type: $relation_type}}]->(tgt)
+                    SET r.weight = $weight,
+                        r.confidence = $confidence,
+                        r.access_count = $access_count,
+                        r.last_access_time = $last_access_time,
+                        r.created_time = $created_time,
+                        r.properties = {map_literal}
+                """
+                self._conn.execute(query, {
+                    "source_id": edge.source_id,
+                    "target_id": edge.target_id,
+                    "relation_type": edge.relation_type,
+                    "weight": edge.weight,
+                    "confidence": edge.confidence,
+                    "access_count": edge.access_count,
+                    "last_access_time": edge.last_access_time or datetime.now(),
+                    "created_time": edge.created_time,
+                })
+                logger.debug(f"边添加成功：{edge.generate_id()}")
+            
             return True
         except Exception as e:
             logger.error(f"添加边失败：{e}")
             return False
+    
+    async def _get_edge(
+        self, 
+        source_id: str, 
+        target_id: str, 
+        relation_type: str
+    ) -> Optional[dict]:
+        """获取已存在的边
+        
+        Args:
+            source_id: 源节点ID
+            target_id: 目标节点ID
+            relation_type: 关系类型
+            
+        Returns:
+            边信息字典，不存在返回 None
+        """
+        try:
+            query = """
+                MATCH (src:Entity {id: $source_id})
+                      -[r:Related {relation_type: $relation_type}]->
+                      (tgt:Entity {id: $target_id})
+                RETURN r.weight, r.confidence, r.properties
+            """
+            result = self._conn.execute(query, {
+                "source_id": source_id,
+                "target_id": target_id,
+                "relation_type": relation_type,
+            })
+            
+            row = result.get_next()
+            if row:
+                return {
+                    "weight": row[0],
+                    "confidence": row[1],
+                    "properties": row[2] if isinstance(row[2], dict) else {},
+                    "source_memory_ids": (row[2] if isinstance(row[2], dict) else {}).get("source_memory_ids", "")
+                }
+            return None
+        except Exception as e:
+            logger.debug(f"查询边失败：{e}")
+            return None
     
     async def expand_from_nodes(
         self, 
