@@ -29,7 +29,6 @@ class Summarizer:
     Attributes:
         llm_manager: LLM 调用管理器实例
         provider: 总结使用的模型提供商
-        persona_manager: AstrBot 人格管理器实例
     
     Examples:
         >>> summarizer = Summarizer(llm_manager=llm_manager)
@@ -40,19 +39,16 @@ class Summarizer:
     def __init__(
         self,
         llm_manager: "LLMManager",
-        provider: str = "",
-        persona_manager = None
+        provider: str = ""
     ):
         """初始化总结器
         
         Args:
             llm_manager: LLM 调用管理器实例
             provider: 总结使用的模型提供商（留空使用默认）
-            persona_manager: AstrBot 人格管理器实例（可选）
         """
         self.llm_manager = llm_manager
         self.provider = provider
-        self.persona_manager = persona_manager
         logger.info("总结器已初始化")
     
     def should_summarize(self, queue: MessageQueue) -> bool:
@@ -137,7 +133,6 @@ class Summarizer:
         """构建总结提示词
         
         将消息列表转换为总结提示词，要求 LLM 输出分条格式。
-        结合当前人格的约束，使总结内容更符合人格设定。
         
         Args:
             messages: 消息列表
@@ -158,20 +153,8 @@ class Summarizer:
         
         messages_text = "\n".join(formatted_messages)
         
-        persona_constraint = self._get_persona_constraint()
-        
-        persona_section = ""
-        if persona_constraint:
-            persona_section = f"""
-## 人格约束
-当前对话中助手的人格设定如下，请在提取记忆时考虑这一约束：
-{persona_constraint}
-
-注意：提取的记忆应与人格设定保持一致，如果对话中体现了人格特征，请一并记录。
-"""
-        
         prompt = f"""请从以下对话中提取有价值的长期记忆信息。
-{persona_section}
+
 对话内容：
 {messages_text}
 
@@ -210,36 +193,3 @@ class Summarizer:
 请提取有价值的记忆信息（无有效信息则输出"无"）："""
         
         return prompt
-    
-    def _get_persona_constraint(self) -> Optional[str]:
-        """获取当前人格的约束内容
-        
-        从 AstrBot 的 persona_manager 获取当前人格的 system_prompt。
-        人格约束用于指导总结时考虑人格特征，与人格隔离无关。
-        
-        Returns:
-            人格约束文本，如果不可用则返回 None
-        """
-        if not self.persona_manager:
-            return None
-        
-        try:
-            persona_id = getattr(self.persona_manager, 'default_persona_id', None)
-            if not persona_id:
-                return None
-            
-            persona = self.persona_manager.get_persona(persona_id)
-            if not persona:
-                return None
-            
-            if hasattr(persona, 'system_prompt') and persona.system_prompt:
-                return persona.system_prompt
-            
-            if hasattr(persona, '_prompt') and persona._prompt:
-                return persona._prompt
-            
-            return None
-        
-        except Exception as e:
-            logger.debug(f"获取人格约束失败: {e}")
-            return None
