@@ -285,8 +285,8 @@ class L3KGAdapter(Component):
                 "relation_type": relation_type,
             })
             
-            row = result.get_next()
-            if row:
+            if result.has_next():
+                row = result.get_next()
                 return {
                     "weight": row[0],
                     "confidence": row[1],
@@ -366,8 +366,10 @@ class L3KGAdapter(Component):
             return {"available": False, "node_count": 0, "edge_count": 0, "node_types": {}, "relation_types": {}}
         
         try:
-            node_count = self._conn.execute("MATCH (e:Entity) RETURN COUNT(e) as count").get_next()[0]
-            edge_count = self._conn.execute("MATCH ()-[r:Related]->() RETURN COUNT(r) as count").get_next()[0]
+            node_result = self._conn.execute("MATCH (e:Entity) RETURN COUNT(e) as count")
+            node_count = node_result.get_next()[0] if node_result.has_next() else 0
+            edge_result = self._conn.execute("MATCH ()-[r:Related]->() RETURN COUNT(r) as count")
+            edge_count = edge_result.get_next()[0] if edge_result.has_next() else 0
             
             node_types_result = self._conn.execute("MATCH (e:Entity) RETURN e.label as label, COUNT(e) as count")
             node_types = {}
@@ -712,7 +714,7 @@ class L3KGAdapter(Component):
                 RETURN COUNT(e) as count
             """, {"group_id": group_id})
             
-            node_count = count_result.get_next()[0]
+            node_count = count_result.get_next()[0] if count_result.has_next() else 0
             
             if node_count == 0:
                 logger.debug(f"群聊 {group_id} 没有知识图谱节点")
@@ -752,7 +754,7 @@ class L3KGAdapter(Component):
                 RETURN COUNT(e) as count
             """)
             
-            node_count = count_result.get_next()[0]
+            node_count = count_result.get_next()[0] if count_result.has_next() else 0
             
             if node_count == 0:
                 return 0
@@ -805,7 +807,7 @@ class L3KGAdapter(Component):
                     RETURN COUNT(e) as count
                 """, {"user_id": user_id})
             
-            node_count = count_result.get_next()[0]
+            node_count = count_result.get_next()[0] if count_result.has_next() else 0
             
             if node_count == 0:
                 logger.debug(f"用户 {user_id} 没有知识图谱节点")
