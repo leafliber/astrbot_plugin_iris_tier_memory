@@ -6,7 +6,7 @@ Iris Tier Memory - L3 知识图谱提取任务
 
 Features:
     - 阈值触发机制
-    - 相关记忆检索
+    - 仅从 L2 记忆本身提取（不包含相关记忆，避免重复提取）
     - 批量处理优化
     - 写锁保护
 """
@@ -33,10 +33,9 @@ class KGExtractionTask:
     流程：
     1. 检测未处理记忆数量
     2. 数量 >= 阈值时执行提取
-    3. 为每条记忆检索相关记忆
-    4. 合并后提取实体和关系
-    5. 写入 L3 知识图谱
-    6. 标记记忆为已处理
+    3. 仅从每条未处理记忆本身提取实体和关系
+    4. 写入 L3 知识图谱（自动合并已有节点）
+    5. 标记记忆为已处理
     
     Attributes:
         _component_manager: 组件管理器引用
@@ -89,7 +88,6 @@ class KGExtractionTask:
         logger.info(f"开始 L3 知识图谱提取，未处理记忆数：{unprocessed_count}")
         
         batch_size = config.get("kg_extraction_batch_size")
-        max_related = config.get("kg_extraction_max_related")
         
         unprocessed_memories = await l2_adapter.get_unprocessed_memories(limit=batch_size)
         
@@ -97,23 +95,15 @@ class KGExtractionTask:
             logger.debug("没有未处理的记忆")
             return
         
-        from iris_memory.l3_kg import EntityExtractor, RelatedMemoryRetriever
+        from iris_memory.l3_kg import EntityExtractor
         
         extractor = EntityExtractor(llm_manager)
-        related_retriever = RelatedMemoryRetriever(self._component_manager)
         
         processed_ids: List[str] = []
         
         for memory in unprocessed_memories:
             try:
-                related_memories = await related_retriever.retrieve_related(
-                    memory, 
-                    top_k=max_related
-                )
-                
-                all_memories = [memory] + related_memories
-                
-                result = await extractor.extract_from_memories(all_memories)
+                result = await extractor.extract_from_memories([memory])
                 
                 if result.nodes or result.edges:
                     node_count = 0

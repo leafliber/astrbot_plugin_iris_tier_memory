@@ -34,6 +34,7 @@ class TestForgettingTask:
         l3_adapter.is_available = True
         l3_adapter.get_all_nodes = AsyncMock(return_value=[])
         l3_adapter.evict_nodes = AsyncMock(return_value=0)
+        l3_adapter.merge_duplicate_nodes = AsyncMock(return_value=(0, 0))
         
         # 配置 get_component 返回值
         def get_component(name):

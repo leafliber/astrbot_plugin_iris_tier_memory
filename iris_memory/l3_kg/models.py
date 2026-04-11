@@ -46,16 +46,17 @@ class GraphNode:
     properties: dict[str, str] = field(default_factory=dict)
     
     def generate_id(self) -> str:
-        """基于内容生成唯一ID
+        """基于实体名称生成唯一ID
         
-        使用 label、name、content 的组合进行 MD5 hash，
+        使用 label、name 的组合进行 MD5 hash，
+        同一 label+name 的实体始终生成相同 ID，确保去重合并。
         生成格式：{label_lower}_{hash_prefix}
         
         Returns:
             节点唯一ID
         """
         content_hash = hashlib.md5(
-            f"{self.label}:{self.name}:{self.content}".encode()
+            f"{self.label}:{self.name}".encode()
         ).hexdigest()
         return f"{self.label.lower()}_{content_hash[:12]}"
     

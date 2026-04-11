@@ -60,6 +60,7 @@ class ForgettingTask:
             return
         
         await self._evict_l2_memories()
+        await self._merge_l3_duplicates()
         await self._evict_l3_nodes()
     
     # =========================================================================
@@ -113,6 +114,31 @@ class ForgettingTask:
             
         except Exception as e:
             logger.error(f"L2 遗忘清洗失败：{e}", exc_info=True)
+    
+    # =========================================================================
+    # L3 图谱去重合并
+    # =========================================================================
+    
+    async def _merge_l3_duplicates(self) -> None:
+        """L3 知识图谱重复节点合并
+        
+        查找同名同 label 的重复节点并合并。
+        """
+        from iris_memory.l3_kg import L3KGAdapter
+        
+        l3_adapter = self._component_manager.get_component("l3_kg")
+        if not l3_adapter or not l3_adapter.is_available:
+            logger.debug("L3 知识图谱不可用，跳过去重合并")
+            return
+        
+        l3_adapter = l3_adapter  # type: L3KGAdapter
+        
+        try:
+            merged, deleted = await l3_adapter.merge_duplicate_nodes()
+            if merged > 0:
+                logger.info(f"L3 去重合并完成：合并 {merged} 组，删除 {deleted} 个重复节点")
+        except Exception as e:
+            logger.error(f"L3 去重合并失败：{e}", exc_info=True)
     
     # =========================================================================
     # L3 图谱淘汰

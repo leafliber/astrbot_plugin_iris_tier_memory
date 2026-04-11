@@ -63,7 +63,7 @@ class TestGraphNode:
         assert node1.generate_id() == node2.generate_id()
     
     def test_id_different_for_different_content(self):
-        """测试不同内容生成不同 ID"""
+        """测试不同实体生成不同 ID"""
         node1 = GraphNode(
             id="",
             label="Person",
@@ -75,6 +75,40 @@ class TestGraphNode:
             label="Person",
             name="Bob",
             content="Bob is a data scientist"
+        )
+        
+        assert node1.generate_id() != node2.generate_id()
+    
+    def test_id_same_for_same_name_different_content(self):
+        """测试同 label+name 不同 content 生成相同 ID（去重合并关键）"""
+        node1 = GraphNode(
+            id="",
+            label="Person",
+            name="Alice",
+            content="Alice is a software engineer"
+        )
+        node2 = GraphNode(
+            id="",
+            label="Person",
+            name="Alice",
+            content="Alice likes coding"
+        )
+        
+        assert node1.generate_id() == node2.generate_id()
+    
+    def test_id_different_for_different_label_same_name(self):
+        """测试同 name 不同 label 生成不同 ID"""
+        node1 = GraphNode(
+            id="",
+            label="Person",
+            name="Python",
+            content="Python the person"
+        )
+        node2 = GraphNode(
+            id="",
+            label="Concept",
+            name="Python",
+            content="Python the language"
         )
         
         assert node1.generate_id() != node2.generate_id()
@@ -214,7 +248,7 @@ class TestWhitelists:
     def test_relation_type_whitelist(self):
         """测试关系类型白名单"""
         assert "KNOWS" in RELATION_TYPE_WHITELIST
-        assert "MENTIONED_IN" in RELATION_TYPE_WHITELIST
+        assert "MENTIONED" in RELATION_TYPE_WHITELIST
         assert "RELATED_TO" in RELATION_TYPE_WHITELIST
         assert "PART_OF" in RELATION_TYPE_WHITELIST
         assert "LOCATED_AT" in RELATION_TYPE_WHITELIST

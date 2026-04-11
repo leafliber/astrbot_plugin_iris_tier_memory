@@ -117,7 +117,15 @@ class L3KGAdapter(Component):
         logger.debug("KuzuDB schema 创建完成")
     
     async def add_node(self, node: GraphNode) -> bool:
-        """添加节点
+        """添加节点，如果节点已存在则合并信息
+        
+        合并策略：
+        - content: 追加新描述（去重）
+        - confidence: 取最大值
+        - access_count: 保留原值
+        - source_memory_id: 合并到 properties.source_memory_ids
+        - group_id: 合并到 properties.group_ids
+        - properties: 合并
         
         Args:
             node: 图谱节点对象
@@ -129,38 +137,152 @@ class L3KGAdapter(Component):
             return False
         
         try:
-            map_literal = _build_map_literal(node.properties)
+            existing = await self._get_node_by_id(node.id)
             
-            query = f"""
-                MERGE (e:Entity {{id: $id}})
-                SET e.label = $label,
-                    e.name = $name,
-                    e.content = $content,
-                    e.confidence = $confidence,
-                    e.access_count = $access_count,
-                    e.last_access_time = $last_access_time,
-                    e.created_time = $created_time,
-                    e.source_memory_id = $source_memory_id,
-                    e.group_id = $group_id,
-                    e.properties = {map_literal}
-            """
-            self._conn.execute(query, {
-                "id": node.id,
-                "label": node.label,
-                "name": node.name,
-                "content": node.content,
-                "confidence": node.confidence,
-                "access_count": node.access_count,
-                "last_access_time": node.last_access_time or datetime.now(),
-                "created_time": node.created_time,
-                "source_memory_id": node.source_memory_id,
-                "group_id": node.group_id,
-            })
-            logger.debug(f"节点添加成功：{node.id}")
+            if existing:
+                merged_content = self._merge_node_content(
+                    existing.get("content", ""),
+                    node.content
+                )
+                merged_confidence = max(
+                    existing.get("confidence", 0.5),
+                    node.confidence
+                )
+                existing_access_count = existing.get("access_count", 0)
+                
+                merged_properties = dict(existing.get("properties", {}) if isinstance(existing.get("properties"), dict) else {})
+                merged_properties.update(node.properties)
+                
+                existing_ids = merged_properties.get("source_memory_ids", "")
+                existing_list = [x.strip() for x in existing_ids.split(",") if x.strip()]
+                if node.source_memory_id and node.source_memory_id not in existing_list:
+                    existing_list.append(node.source_memory_id)
+                merged_properties["source_memory_ids"] = ",".join(existing_list)
+                
+                existing_groups = merged_properties.get("group_ids", "")
+                group_list = [x.strip() for x in existing_groups.split(",") if x.strip()]
+                existing_group_id = existing.get("group_id", "")
+                if existing_group_id and existing_group_id not in group_list:
+                    group_list.insert(0, existing_group_id)
+                if node.group_id and node.group_id not in group_list:
+                    group_list.append(node.group_id)
+                merged_properties["group_ids"] = ",".join(group_list)
+                
+                map_literal = _build_map_literal(merged_properties)
+                
+                query = f"""
+                    MATCH (e:Entity {{id: $id}})
+                    SET e.content = $content,
+                        e.confidence = $confidence,
+                        e.access_count = $access_count,
+                        e.last_access_time = $last_access_time,
+                        e.properties = {map_literal}
+                """
+                self._conn.execute(query, {
+                    "id": node.id,
+                    "content": merged_content,
+                    "confidence": merged_confidence,
+                    "access_count": existing_access_count,
+                    "last_access_time": datetime.now(),
+                })
+                logger.debug(f"节点合并成功：{node.id}")
+            else:
+                properties = dict(node.properties)
+                if node.source_memory_id:
+                    properties["source_memory_ids"] = node.source_memory_id
+                if node.group_id:
+                    properties["group_ids"] = node.group_id
+                
+                map_literal = _build_map_literal(properties)
+                
+                query = f"""
+                    CREATE (e:Entity {{
+                        id: $id,
+                        label: $label,
+                        name: $name,
+                        content: $content,
+                        confidence: $confidence,
+                        access_count: $access_count,
+                        last_access_time: $last_access_time,
+                        created_time: $created_time,
+                        source_memory_id: $source_memory_id,
+                        group_id: $group_id,
+                        properties: {map_literal}
+                    }})
+                """
+                self._conn.execute(query, {
+                    "id": node.id,
+                    "label": node.label,
+                    "name": node.name,
+                    "content": node.content,
+                    "confidence": node.confidence,
+                    "access_count": node.access_count,
+                    "last_access_time": node.last_access_time or datetime.now(),
+                    "created_time": node.created_time,
+                    "source_memory_id": node.source_memory_id,
+                    "group_id": node.group_id,
+                })
+                logger.debug(f"节点添加成功：{node.id}")
+            
             return True
         except Exception as e:
             logger.error(f"添加节点失败：{e}")
             return False
+    
+    def _merge_node_content(self, existing_content: str, new_content: str) -> str:
+        """合并节点内容描述
+        
+        将新描述追加到已有描述后，如果新描述已包含在已有描述中则跳过。
+        
+        Args:
+            existing_content: 已有内容
+            new_content: 新内容
+            
+        Returns:
+            合并后的内容
+        """
+        if not existing_content:
+            return new_content
+        if not new_content:
+            return existing_content
+        
+        if new_content in existing_content:
+            return existing_content
+        
+        if existing_content in new_content:
+            return new_content
+        
+        return f"{existing_content}；{new_content}"
+    
+    async def _get_node_by_id(self, node_id: str) -> Optional[dict]:
+        """根据 ID 获取节点
+        
+        Args:
+            node_id: 节点 ID
+            
+        Returns:
+            节点信息字典，不存在返回 None
+        """
+        try:
+            result = self._conn.execute("""
+                MATCH (e:Entity {id: $id})
+                RETURN e.content, e.confidence, e.access_count,
+                       e.group_id, e.properties
+            """, {"id": node_id})
+            
+            if result.has_next():
+                row = result.get_next()
+                return {
+                    "content": row[0],
+                    "confidence": row[1],
+                    "access_count": row[2],
+                    "group_id": row[3],
+                    "properties": row[4] if isinstance(row[4], dict) else {},
+                }
+            return None
+        except Exception as e:
+            logger.debug(f"查询节点失败：{e}")
+            return None
     
     async def add_edge(self, edge: GraphEdge) -> bool:
         """添加关系边
@@ -844,6 +966,208 @@ class L3KGAdapter(Component):
         except Exception as e:
             logger.error(f"删除用户知识图谱失败: {e}", exc_info=True)
             return 0
+    
+    async def merge_duplicate_nodes(self) -> tuple[int, int]:
+        """合并同名同 label 的重复节点
+        
+        查找所有 label+name 相同但 id 不同的节点组，
+        将它们合并为一个节点（保留最早创建的），
+        并将重复节点的边迁移到保留节点上。
+        
+        Returns:
+            (合并的节点数, 删除的节点数)
+        """
+        if not self._is_available:
+            return 0, 0
+        
+        try:
+            result = self._conn.execute("""
+                MATCH (e:Entity)
+                RETURN e.id, e.label, e.name, e.content, e.confidence,
+                       e.access_count, e.created_time, e.group_id, e.properties
+            """)
+            
+            name_groups: dict[str, list[dict]] = {}
+            for row in result:
+                node_data = {
+                    "id": row[0],
+                    "label": row[1],
+                    "name": row[2],
+                    "content": row[3],
+                    "confidence": row[4],
+                    "access_count": row[5],
+                    "created_time": row[6],
+                    "group_id": row[7],
+                    "properties": row[8] if isinstance(row[8], dict) else {},
+                }
+                key = f"{row[1]}:{row[2]}"
+                if key not in name_groups:
+                    name_groups[key] = []
+                name_groups[key].append(node_data)
+            
+            merged_count = 0
+            deleted_count = 0
+            
+            for key, nodes in name_groups.items():
+                if len(nodes) <= 1:
+                    continue
+                
+                nodes.sort(key=lambda n: n.get("created_time", "") or "")
+                keep_node = nodes[0]
+                duplicate_nodes = nodes[1:]
+                
+                merged_content = keep_node["content"] or ""
+                merged_confidence = keep_node["confidence"] or 0.5
+                merged_access_count = keep_node["access_count"] or 0
+                merged_properties = dict(keep_node.get("properties", {}))
+                
+                source_ids = [x.strip() for x in merged_properties.get("source_memory_ids", "").split(",") if x.strip()]
+                group_ids = [x.strip() for x in merged_properties.get("group_ids", "").split(",") if x.strip()]
+                if keep_node.get("group_id") and keep_node["group_id"] not in group_ids:
+                    group_ids.insert(0, keep_node["group_id"])
+                
+                for dup in duplicate_nodes:
+                    dup_content = dup["content"]
+                    if dup_content and dup_content not in merged_content:
+                        if merged_content and merged_content not in dup_content:
+                            merged_content = merged_content + "；" + dup_content
+                        elif not merged_content:
+                            merged_content = dup_content
+                    
+                    merged_confidence = max(merged_confidence, dup.get("confidence", 0.5))
+                    merged_access_count += dup.get("access_count", 0)
+                    
+                    dup_props = dup.get("properties", {})
+                    if isinstance(dup_props, dict):
+                        for k, v in dup_props.items():
+                            if k not in ("source_memory_ids", "group_ids"):
+                                merged_properties[k] = v
+                        dup_source_ids = [x.strip() for x in dup_props.get("source_memory_ids", "").split(",") if x.strip()]
+                        source_ids.extend(sid for sid in dup_source_ids if sid not in source_ids)
+                        dup_group_ids = [x.strip() for x in dup_props.get("group_ids", "").split(",") if x.strip()]
+                        group_ids.extend(gid for gid in dup_group_ids if gid not in group_ids)
+                    
+                    if dup.get("group_id") and dup["group_id"] not in group_ids:
+                        group_ids.append(dup["group_id"])
+                    
+                    dup_id = dup["id"]
+                    keep_id = keep_node["id"]
+                    
+                    outgoing_result = self._conn.execute("""
+                        MATCH (src:Entity {id: $dup_id})-[r:Related]->(tgt:Entity)
+                        WHERE tgt.id <> $keep_id
+                        RETURN tgt.id, r.relation_type, r.weight, r.confidence,
+                               r.access_count, r.created_time, r.source_memory_id, r.properties
+                    """, {"dup_id": dup_id, "keep_id": keep_id})
+                    
+                    for row in outgoing_result:
+                        tgt_id, rel_type, weight, conf, acc_count, c_time, src_mem_id, props = row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]
+                        existing_edge = await self._get_edge(keep_id, tgt_id, rel_type)
+                        if not existing_edge:
+                            edge_props = dict(props) if isinstance(props, dict) else {}
+                            if src_mem_id:
+                                edge_props["source_memory_ids"] = src_mem_id
+                            map_lit = _build_map_literal(edge_props)
+                            self._conn.execute(f"""
+                                MATCH (src:Entity {{id: $source_id}})
+                                MATCH (tgt:Entity {{id: $target_id}})
+                                CREATE (src)-[r:Related {{
+                                    relation_type: $relation_type,
+                                    weight: $weight,
+                                    confidence: $confidence,
+                                    access_count: $access_count,
+                                    last_access_time: current_timestamp(),
+                                    created_time: $created_time,
+                                    properties: {map_lit}
+                                }}]->(tgt)
+                            """, {
+                                "source_id": keep_id,
+                                "target_id": tgt_id,
+                                "relation_type": rel_type,
+                                "weight": weight,
+                                "confidence": conf,
+                                "access_count": acc_count,
+                                "created_time": c_time,
+                            })
+                    
+                    incoming_result = self._conn.execute("""
+                        MATCH (src:Entity)-[r:Related]->(tgt:Entity {id: $dup_id})
+                        WHERE src.id <> $keep_id
+                        RETURN src.id, r.relation_type, r.weight, r.confidence,
+                               r.access_count, r.created_time, r.source_memory_id, r.properties
+                    """, {"dup_id": dup_id, "keep_id": keep_id})
+                    
+                    for row in incoming_result:
+                        src_id, rel_type, weight, conf, acc_count, c_time, src_mem_id, props = row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]
+                        existing_edge = await self._get_edge(src_id, keep_id, rel_type)
+                        if not existing_edge:
+                            edge_props = dict(props) if isinstance(props, dict) else {}
+                            if src_mem_id:
+                                edge_props["source_memory_ids"] = src_mem_id
+                            map_lit = _build_map_literal(edge_props)
+                            self._conn.execute(f"""
+                                MATCH (src:Entity {{id: $source_id}})
+                                MATCH (tgt:Entity {{id: $target_id}})
+                                CREATE (src)-[r:Related {{
+                                    relation_type: $relation_type,
+                                    weight: $weight,
+                                    confidence: $confidence,
+                                    access_count: $access_count,
+                                    last_access_time: current_timestamp(),
+                                    created_time: $created_time,
+                                    properties: {map_lit}
+                                }}]->(tgt)
+                            """, {
+                                "source_id": src_id,
+                                "target_id": keep_id,
+                                "relation_type": rel_type,
+                                "weight": weight,
+                                "confidence": conf,
+                                "access_count": acc_count,
+                                "created_time": c_time,
+                            })
+                    
+                    self._conn.execute("""
+                        MATCH (e:Entity {id: $id})
+                        DETACH DELETE e
+                    """, {"id": dup_id})
+                    
+                    deleted_count += 1
+                
+                if source_ids:
+                    merged_properties["source_memory_ids"] = ",".join(source_ids)
+                if group_ids:
+                    merged_properties["group_ids"] = ",".join(group_ids)
+                
+                map_literal = _build_map_literal(merged_properties)
+                
+                update_query = f"""
+                    MATCH (e:Entity {{id: $id}})
+                    SET e.content = $content,
+                        e.confidence = $confidence,
+                        e.access_count = $access_count,
+                        e.properties = {map_literal}
+                """
+                self._conn.execute(update_query, {
+                    "id": keep_node["id"],
+                    "content": merged_content,
+                    "confidence": merged_confidence,
+                    "access_count": merged_access_count,
+                })
+                
+                merged_count += 1
+            
+            if merged_count > 0:
+                logger.info(
+                    f"节点合并完成：合并了 {merged_count} 组重复节点，"
+                    f"删除了 {deleted_count} 个重复节点"
+                )
+            
+            return merged_count, deleted_count
+            
+        except Exception as e:
+            logger.error(f"合并重复节点失败：{e}")
+            return 0, 0
     
     async def shutdown(self) -> None:
         """关闭数据库连接"""
