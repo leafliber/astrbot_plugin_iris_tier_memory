@@ -4,6 +4,7 @@ Iris Tier Memory - L1 消息缓冲组件
 提供消息队列管理、自动总结触发等功能。
 支持群聊隔离和人格切换时清空所有队列。
 """
+from __future__ import annotations
 
 from typing import Optional, Dict, Any, List
 from datetime import datetime
@@ -493,98 +494,298 @@ class L1Buffer(Component):
         messages: list[ContextMessage],
         summary: str
     ) -> None:
-        """总结后更新画像（内部函数）
-        
-        更新群聊画像和用户画像的中期字段。
-        
+        """总结后更新画像（三层更新策略）
+
+        短期字段：每次总结后规则更新（无LLM）
+        中期字段：按频率触发LLM分析
+        长期字段：按时间间隔触发LLM深度分析
+
         Args:
             group_id: 群聊ID
             messages: 被总结的消息列表
-            summary: 总结文本（JSON 格式）
+            summary: 总结文本
         """
         config = get_config()
         if not config.get("profile.enable"):
             return
-        
+
         if not self._component_manager:
             return
-        
+
         profile_storage = self._component_manager.get_component("profile")
         if not profile_storage or not profile_storage.is_available:
             return
-        
+
         try:
-            from iris_memory.profile import GroupProfileManager, UserProfileManager
+            from iris_memory.profile import GroupProfileManager, UserProfileManager, ProfileAnalyzer
+            from iris_memory.profile.models import UpdateTier
             from .summarizer import parse_summary_response
-            
-            parsed = parse_summary_response(summary)
-            
+
             group_manager = GroupProfileManager(profile_storage)
             user_manager = UserProfileManager(profile_storage)
-            
+
             active_users = list(
                 set(msg.source for msg in messages if msg.role == "user")
             )
-            
-            name_to_id = self._build_name_to_id_map(messages)
+
             current_topic = summary[:100] if len(summary) > 100 else summary
-            
+
             await group_manager.update_simple_fields(
                 group_id=group_id,
                 current_topic=current_topic,
                 active_users=active_users
             )
-            
-            group_profile = parsed.get("group_profile", {})
-            if group_profile:
-                interests = group_profile.get("interests", [])
-                atmosphere_tags = group_profile.get("atmosphere_tags", [])
-                common_expressions = group_profile.get("common_expressions", [])
-                
-                if interests or atmosphere_tags or common_expressions:
-                    await group_manager.update_from_analysis(
-                        group_id=group_id,
-                        interests=interests,
-                        atmosphere_tags=atmosphere_tags,
-                        common_expressions=common_expressions
+
+            user_messages_by_id: dict[str, list[str]] = {}
+            for msg in messages:
+                if msg.role == "user" and msg.source:
+                    user_messages_by_id.setdefault(msg.source, []).append(msg.content)
+
+            effective_group_id = group_id if config.get("isolation_config.enable_group_isolation") else "default"
+
+            for user_id, user_msgs in user_messages_by_id.items():
+                from iris_memory.profile.analyzer import ProfileAnalyzer
+                llm_manager = self._component_manager.get_component("llm_manager")
+                if llm_manager and llm_manager.is_available:
+                    analyzer = ProfileAnalyzer(llm_manager)
+                    emotion, confidence = analyzer.detect_emotional_state(user_msgs)
+                    if emotion:
+                        await user_manager.update_short_term_fields(
+                            user_id=user_id,
+                            group_id=effective_group_id,
+                            emotional_state=emotion,
+                            emotional_confidence=confidence
+                        )
+
+            group_profile_obj = await group_manager.get_or_create(group_id)
+            if group_manager.should_update_mid(group_profile_obj):
+                await self._update_group_mid_term(
+                    group_id, messages, group_manager, profile_storage
+                )
+
+            if group_manager.should_update_long(group_profile_obj):
+                await self._update_group_long_term(
+                    group_id, messages, group_manager, profile_storage
+                )
+
+            for user_id, user_msgs in user_messages_by_id.items():
+                user_profile_obj = await user_manager.get_or_create(user_id, effective_group_id)
+
+                if user_manager.should_update_mid(user_profile_obj):
+                    await self._update_user_mid_term(
+                        user_id, effective_group_id, user_msgs,
+                        user_manager, user_profile_obj, profile_storage
                     )
-                    logger.info(f"更新群聊画像分析字段: {group_id}")
-            
-            user_profiles = parsed.get("user_profiles", {})
-            if user_profiles:
-                effective_group_id = group_id if config.get("isolation_config.enable_group_isolation") else "default"
-                
-                for user_name, profile_data in user_profiles.items():
-                    user_id = name_to_id.get(user_name)
-                    if not user_id:
-                        for msg in messages:
-                            if msg.role == "user" and msg.metadata:
-                                msg_user_name = msg.metadata.get("user_name")
-                                if msg_user_name == user_name and msg.source:
-                                    user_id = msg.source
-                                    break
-                    
-                    if user_id:
-                        emotional_state = profile_data.get("emotional_state", "")
-                        personality_tags = profile_data.get("personality_tags", [])
-                        interests = profile_data.get("interests", [])
-                        language_style = profile_data.get("language_style", "")
-                        
-                        if emotional_state or personality_tags or interests:
-                            await user_manager.update_from_analysis(
-                                user_id=user_id,
-                                group_id=effective_group_id,
-                                emotional_state=emotional_state,
-                                personality_tags=personality_tags,
-                                interests=interests,
-                                language_style=language_style if language_style else None
-                            )
-                            logger.info(f"更新用户画像分析字段: {user_name} ({user_id})")
-            
+
+                if user_manager.should_update_long(user_profile_obj):
+                    await self._update_user_long_term(
+                        user_id, effective_group_id, user_msgs,
+                        user_manager, user_profile_obj, profile_storage
+                    )
+
             logger.debug(f"总结后更新画像完成: {group_id}")
-        
+
         except Exception as e:
             logger.error(f"更新画像失败: {e}", exc_info=True)
+
+    async def _update_group_mid_term(
+        self,
+        group_id: str,
+        messages: list,
+        group_manager,
+        profile_storage
+    ) -> None:
+        """群聊画像中期更新（LLM分析）
+
+        Args:
+            group_id: 群聊ID
+            messages: 消息列表
+            group_manager: 群聊画像管理器
+            profile_storage: 画像存储
+        """
+        llm_manager = self._component_manager.get_component("llm_manager")
+        if not llm_manager or not llm_manager.is_available:
+            return
+
+        try:
+            from iris_memory.profile import ProfileAnalyzer
+            from iris_memory.profile.models import UpdateTier
+
+            analyzer = ProfileAnalyzer(llm_manager)
+            group_profile_obj = await group_manager.get_or_create(group_id)
+            from .models import profile_to_dict
+            current_profile_dict = profile_to_dict(group_profile_obj)
+
+            msg_texts = [msg.content for msg in messages if msg.content]
+            result = await analyzer.analyze_group_profile(
+                msg_texts, current_profile_dict, tier=UpdateTier.MID
+            )
+
+            if result:
+                await group_manager.update_from_analysis(
+                    group_id=group_id,
+                    interests=result.get("interests"),
+                    atmosphere_tags=result.get("atmosphere_tags"),
+                    common_expressions=result.get("common_expressions"),
+                    custom_fields=result.get("custom_fields"),
+                    tier=UpdateTier.MID,
+                    confidence=0.7
+                )
+                logger.info(f"群聊画像中期更新完成: {group_id}")
+
+        except Exception as e:
+            logger.error(f"群聊画像中期更新失败: {e}", exc_info=True)
+
+    async def _update_group_long_term(
+        self,
+        group_id: str,
+        messages: list,
+        group_manager,
+        profile_storage
+    ) -> None:
+        """群聊画像长期更新（LLM深度分析）
+
+        Args:
+            group_id: 群聊ID
+            messages: 消息列表
+            group_manager: 群聊画像管理器
+            profile_storage: 画像存储
+        """
+        llm_manager = self._component_manager.get_component("llm_manager")
+        if not llm_manager or not llm_manager.is_available:
+            return
+
+        try:
+            from iris_memory.profile import ProfileAnalyzer
+            from iris_memory.profile.models import UpdateTier
+
+            analyzer = ProfileAnalyzer(llm_manager)
+            group_profile_obj = await group_manager.get_or_create(group_id)
+            from .models import profile_to_dict
+            current_profile_dict = profile_to_dict(group_profile_obj)
+
+            msg_texts = [msg.content for msg in messages if msg.content]
+            result = await analyzer.analyze_group_profile(
+                msg_texts, current_profile_dict, tier=UpdateTier.LONG
+            )
+
+            if result:
+                await group_manager.update_long_term_from_analysis(
+                    group_id=group_id,
+                    long_term_tags=result.get("long_term_tags"),
+                    blacklist_topics=result.get("blacklist_topics"),
+                    interests=result.get("interests"),
+                    atmosphere_tags=result.get("atmosphere_tags"),
+                    custom_fields=result.get("custom_fields"),
+                    confidence=0.8
+                )
+                logger.info(f"群聊画像长期更新完成: {group_id}")
+
+        except Exception as e:
+            logger.error(f"群聊画像长期更新失败: {e}", exc_info=True)
+
+    async def _update_user_mid_term(
+        self,
+        user_id: str,
+        group_id: str,
+        user_messages: list[str],
+        user_manager,
+        user_profile_obj,
+        profile_storage
+    ) -> None:
+        """用户画像中期更新（LLM分析）
+
+        Args:
+            user_id: 用户ID
+            group_id: 群聊ID
+            user_messages: 用户消息列表
+            user_manager: 用户画像管理器
+            user_profile_obj: 用户画像对象
+            profile_storage: 画像存储
+        """
+        llm_manager = self._component_manager.get_component("llm_manager")
+        if not llm_manager or not llm_manager.is_available:
+            return
+
+        try:
+            from iris_memory.profile import ProfileAnalyzer
+            from iris_memory.profile.models import UpdateTier, profile_to_dict
+
+            analyzer = ProfileAnalyzer(llm_manager)
+            current_profile_dict = profile_to_dict(user_profile_obj)
+
+            result = await analyzer.analyze_user_profile(
+                user_messages, current_profile_dict, tier=UpdateTier.MID
+            )
+
+            if result:
+                await user_manager.update_from_analysis(
+                    user_id=user_id,
+                    group_id=group_id,
+                    personality_tags=result.get("personality_tags"),
+                    interests=result.get("interests"),
+                    language_style=result.get("language_style"),
+                    custom_fields=result.get("custom_fields"),
+                    tier=UpdateTier.MID,
+                    confidence=0.7
+                )
+                logger.info(f"用户画像中期更新完成: {user_id}")
+
+        except Exception as e:
+            logger.error(f"用户画像中期更新失败: {e}", exc_info=True)
+
+    async def _update_user_long_term(
+        self,
+        user_id: str,
+        group_id: str,
+        user_messages: list[str],
+        user_manager,
+        user_profile_obj,
+        profile_storage
+    ) -> None:
+        """用户画像长期更新（LLM深度分析）
+
+        Args:
+            user_id: 用户ID
+            group_id: 群聊ID
+            user_messages: 用户消息列表
+            user_manager: 用户画像管理器
+            user_profile_obj: 用户画像对象
+            profile_storage: 画像存储
+        """
+        llm_manager = self._component_manager.get_component("llm_manager")
+        if not llm_manager or not llm_manager.is_available:
+            return
+
+        try:
+            from iris_memory.profile import ProfileAnalyzer
+            from iris_memory.profile.models import UpdateTier, profile_to_dict
+
+            analyzer = ProfileAnalyzer(llm_manager)
+            current_profile_dict = profile_to_dict(user_profile_obj)
+
+            result = await analyzer.analyze_user_profile(
+                user_messages, current_profile_dict, tier=UpdateTier.LONG
+            )
+
+            if result:
+                await user_manager.update_long_term_from_analysis(
+                    user_id=user_id,
+                    group_id=group_id,
+                    occupation=result.get("occupation"),
+                    bot_relationship=result.get("bot_relationship"),
+                    important_events=result.get("important_events"),
+                    taboo_topics=result.get("taboo_topics"),
+                    important_dates=result.get("important_dates"),
+                    personality_tags=result.get("personality_tags"),
+                    interests=result.get("interests"),
+                    custom_fields=result.get("custom_fields"),
+                    confidence=0.8
+                )
+                logger.info(f"用户画像长期更新完成: {user_id}")
+
+        except Exception as e:
+            logger.error(f"用户画像长期更新失败: {e}", exc_info=True)
     
     async def _write_summary_to_l2(
         self,

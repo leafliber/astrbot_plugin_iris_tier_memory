@@ -146,11 +146,11 @@ class TestSummarizer:
         
         assert "[张三]: 你好" in prompt
         assert "[助手]: 你好！" in prompt
-        assert "分条列出" in prompt
-        assert "- " in prompt
-    
+        assert "提取记忆信息" in prompt
+        assert "memories" in prompt
+
     def test_build_summary_prompt_format(self, mock_llm_manager):
-        """测试总结提示词包含分条格式要求"""
+        """测试总结提示词包含提取格式要求"""
         summarizer = Summarizer(llm_manager=mock_llm_manager)
         
         messages = [
@@ -173,11 +173,10 @@ class TestSummarizer:
         
         prompt = summarizer._build_summary_prompt(messages)
         
-        assert "每条信息独立成行" in prompt
-        assert "使用 \"- \" 开头" in prompt
-        assert "不同主题的信息分开列出" in prompt
-        assert "示例格式" in prompt
-        assert "必须明确提到是哪位用户" in prompt
+        assert "信息价值" in prompt
+        assert "独立完整" in prompt
+        assert "非即时性" in prompt
+        assert "JSON" in prompt
     
     def test_build_summary_prompt_with_user_names(self, mock_llm_manager):
         """测试总结提示词包含用户名"""

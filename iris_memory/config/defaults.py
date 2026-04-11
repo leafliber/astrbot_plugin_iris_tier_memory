@@ -169,6 +169,9 @@ class HiddenConfig:
     profile_analysis_interval_hours: int = 24          # 分析任务间隔（小时）
     profile_max_messages_for_analysis: int = 50        # 分析时最大消息数
     profile_enable_version_control: bool = True        # 启用版本控制
+    profile_mid_update_interval_summaries: int = 5     # 中期更新：每隔N次总结触发
+    profile_mid_update_interval_hours: float = 24.0    # 中期更新：最短间隔（小时）
+    profile_long_update_interval_hours: float = 168.0  # 长期更新：最短间隔（小时，默认7天）
     
     # 图片解析参数
     image_parsing_timeout_ms: int = 30000              # 图片解析超时（毫秒）

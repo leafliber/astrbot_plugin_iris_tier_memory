@@ -156,14 +156,12 @@ class Summarizer:
         messages_text = "\n".join(formatted_messages)
         user_names_list = list(user_names) if user_names else ["未知用户"]
         
-        prompt = f"""请分析以下对话，提取记忆信息并分析画像特征。
+        prompt = f"""请分析以下对话，提取记忆信息。
 
 对话内容：
 {messages_text}
 
-## 任务一：提取记忆信息
-
-### 提取标准（必须同时满足）
+## 提取标准（必须同时满足）
 1. **信息价值**：包含用户偏好、重要事实、计划安排、观点态度、技能经验等可复用信息
 2. **独立完整**：脱离上下文也能理解其含义
 3. **非即时性**：不是仅在当前对话中有意义
@@ -176,21 +174,6 @@ class Summarizer:
 - 情绪表达（哈哈、无语、生气等纯情绪词）
 - 确认性回复（收到、已读、好的收到等）
 
-## 任务二：分析群聊画像
-
-从对话中分析群聊整体特征：
-- interests: 群聊兴趣点（多次出现的话题）
-- atmosphere_tags: 氛围标签（轻松、严肃、技术范、娱乐等）
-- common_expressions: 常用语/群内梗
-
-## 任务三：分析用户画像
-
-为参与对话的用户分析个人特征：
-- emotional_state: 当前情感状态
-- personality_tags: 性格标签（外向、内向、幽默、理性等）
-- interests: 兴趣爱好
-- language_style: 语言风格（简洁、详细、正式、随意等）
-
 ## 输出格式
 
 请严格按照以下 JSON 格式输出：
@@ -200,34 +183,13 @@ class Summarizer:
   "memories": [
     "- 张三正在学习Python，觉得装饰器概念较难理解",
     "- 李四下周三要去北京出差，周日返回"
-  ],
-  "group_profile": {{
-    "interests": ["Python学习", "出差安排"],
-    "atmosphere_tags": ["轻松", "互助"],
-    "common_expressions": []
-  }},
-  "user_profiles": {{
-    "张三": {{
-      "emotional_state": "困惑但积极",
-      "personality_tags": ["好学"],
-      "interests": ["Python编程"],
-      "language_style": "简洁"
-    }},
-    "李四": {{
-      "emotional_state": "平静",
-      "personality_tags": ["热心"],
-      "interests": [],
-      "language_style": "简洁"
-    }}
-  }}
+  ]
 }}
 ```
 
 ## 注意事项
 1. 如果没有有效记忆，memories 数组为空
-2. 如果无法分析出某个画像字段，该字段留空数组或空字符串
-3. 仅输出 JSON，不要添加任何其他内容
-4. 对话中出现的用户：{', '.join(user_names_list)}
+2. 仅输出 JSON，不要添加任何其他内容
 
 请分析并输出 JSON："""
         

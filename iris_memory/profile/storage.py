@@ -184,14 +184,17 @@ class ProfileStorage(Component):
     
     def _get_persona_id(self) -> str:
         """获取当前人格ID
-        
+
         Returns:
             人格ID，未启用人格隔离则返回 "default"
         """
-        config = get_config()
-        if config.get("isolation_config.enable_persona_isolation"):
-            return "default"
-        
+        try:
+            config = get_config()
+            if config.get("isolation_config.enable_persona_isolation"):
+                return "default"
+        except RuntimeError:
+            pass
+
         return "default"
     
     async def update_group_profile(
