@@ -25,11 +25,9 @@ class TestProfileAnalyzer:
     @pytest.mark.asyncio
     async def test_analyze_group_profile(self, analyzer, mock_llm_manager):
         """测试分析群聊画像"""
-        # 模拟 LLM 返回 JSON
         llm_response = json.dumps({
             "interests": ["技术", "AI"],
-            "atmosphere_tags": ["轻松", "技术范"],
-            "common_expressions": ["yyds", "绝了"]
+            "atmosphere_tags": ["轻松", "技术范"]
         }, ensure_ascii=False)
         mock_llm_manager.generate.return_value = llm_response
         
@@ -40,15 +38,12 @@ class TestProfileAnalyzer:
         
         assert result["interests"] == ["技术", "AI"]
         assert result["atmosphere_tags"] == ["轻松", "技术范"]
-        assert result["common_expressions"] == ["yyds", "绝了"]
         mock_llm_manager.generate.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_analyze_user_profile(self, analyzer, mock_llm_manager):
         """测试分析用户画像"""
-        # 模拟 LLM 返回 JSON
         llm_response = json.dumps({
-            "emotional_state": "愉快",
             "personality_tags": ["外向", "幽默"],
             "interests": ["编程", "游戏"],
             "language_style": "简洁"
@@ -60,7 +55,6 @@ class TestProfileAnalyzer:
         
         result = await analyzer.analyze_user_profile(messages, current_profile)
         
-        assert result["emotional_state"] == "愉快"
         assert result["personality_tags"] == ["外向", "幽默"]
         assert result["interests"] == ["编程", "游戏"]
         assert result["language_style"] == "简洁"

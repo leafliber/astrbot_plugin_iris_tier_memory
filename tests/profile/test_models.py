@@ -1,7 +1,6 @@
 """画像数据模型测试"""
 
 import pytest
-from datetime import datetime
 
 from iris_memory.profile.models import (
     GroupProfile,
@@ -22,7 +21,6 @@ class TestGroupProfile:
         assert profile.group_id == "group_123"
         assert profile.group_name == ""
         assert profile.version == 1
-        assert profile.current_topic == ""
         assert profile.interests == []
         assert profile.atmosphere_tags == []
     
@@ -43,15 +41,13 @@ class TestGroupProfile:
         """测试画像转字典"""
         profile = GroupProfile(
             group_id="group_123",
-            group_name="测试群",
-            last_interaction_time=datetime(2026, 3, 29, 18, 0, 0)
+            group_name="测试群"
         )
         
         data = profile_to_dict(profile)
         
         assert data["group_id"] == "group_123"
         assert data["group_name"] == "测试群"
-        assert isinstance(data["last_interaction_time"], str)  # datetime 转为字符串
     
     def test_dict_to_group_profile(self):
         """测试字典转群聊画像"""
@@ -59,8 +55,7 @@ class TestGroupProfile:
             "group_id": "group_123",
             "group_name": "测试群",
             "version": 2,
-            "interests": ["技术"],
-            "last_interaction_time": "2026-03-29T18:00:00"
+            "interests": ["技术"]
         }
         
         profile = dict_to_group_profile(data)
@@ -69,7 +64,6 @@ class TestGroupProfile:
         assert profile.group_name == "测试群"
         assert profile.version == 2
         assert profile.interests == ["技术"]
-        assert isinstance(profile.last_interaction_time, datetime)
 
 
 class TestUserProfile:
@@ -102,15 +96,13 @@ class TestUserProfile:
         """测试用户画像转字典"""
         profile = UserProfile(
             user_id="user_456",
-            user_name="小明",
-            last_interaction_time=datetime(2026, 3, 29, 18, 0, 0)
+            user_name="小明"
         )
         
         data = profile_to_dict(profile)
         
         assert data["user_id"] == "user_456"
         assert data["user_name"] == "小明"
-        assert isinstance(data["last_interaction_time"], str)
     
     def test_dict_to_user_profile(self):
         """测试字典转用户画像"""
@@ -118,8 +110,7 @@ class TestUserProfile:
             "user_id": "user_456",
             "user_name": "小明",
             "version": 3,
-            "personality_tags": ["外向"],
-            "last_interaction_time": "2026-03-29T18:00:00"
+            "personality_tags": ["外向"]
         }
         
         profile = dict_to_user_profile(data)
@@ -128,4 +119,3 @@ class TestUserProfile:
         assert profile.user_name == "小明"
         assert profile.version == 3
         assert profile.personality_tags == ["外向"]
-        assert isinstance(profile.last_interaction_time, datetime)

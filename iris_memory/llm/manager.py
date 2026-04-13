@@ -218,6 +218,7 @@ class LLMManager(Component):
             "scheduled_tasks": "scheduled_tasks.provider",
             "enhancement_rerank": "enhancement.rerank_provider",
             "image_parsing": "image_parsing.provider",
+            "profile_analysis": "profile.analysis_provider",
         }
         
         config_key = module_config_map.get(module)

@@ -14,11 +14,9 @@ from enum import Enum
 class UpdateTier(Enum):
     """字段更新层级
     
-    短期字段：每次总结后规则更新，无需LLM
     中期字段：按时间间隔或总结次数触发LLM分析
     长期字段：仅检测到显著新信息时更新，需高置信度
     """
-    SHORT = "short"
     MID = "mid"
     LONG = "long"
 
@@ -53,8 +51,6 @@ class FieldMeta:
         if self.confidence < min_confidence:
             return True
         if self.update_count == 0:
-            return True
-        if tier == UpdateTier.SHORT:
             return True
         return False
 
@@ -138,59 +134,14 @@ class ProfileUpdateTracker:
 
 
 # ============================================================================
-# 群聊画像
+# 画像元数据混入类
 # ============================================================================
 
-@dataclass
-class GroupProfile:
-    """群聊画像
-
-    记录群聊的整体特征和行为模式。
-    支持三层更新频率和字段置信度管理。
-
-    Attributes:
-        group_id: 群聊ID
-        group_name: 群聊名称
-        version: 版本号（用于版本控制）
-
-        current_topic: 当前所聊话题（短期，规则更新）
-        last_interaction_time: 最近互动时间（短期）
-        active_users: 活跃用户列表（短期）
-
-        interests: 群聊兴趣点（中期，LLM分析更新）
-        active_time_slots: 活跃时段（中期）
-        atmosphere_tags: 氛围标签（中期）
-        common_expressions: 常用语/梗（中期）
-
-        long_term_tags: 核心特征标签（长期）
-        blacklist_topics: 禁忌话题（长期）
-
-        custom_fields: 扩展字段
-
-        field_meta: 各字段元数据（置信度、更新时间等）
-        update_tracker: 更新追踪器（控制更新频率）
+class ProfileMetadataMixin:
+    """画像元数据混入类
+    
+    提供字段元数据和更新追踪器的通用操作方法。
     """
-
-    group_id: str
-    group_name: str = ""
-    version: int = 1
-
-    current_topic: str = ""
-    last_interaction_time: Optional[datetime] = None
-    active_users: List[str] = field(default_factory=list)
-
-    interests: List[str] = field(default_factory=list)
-    active_time_slots: List[str] = field(default_factory=list)
-    atmosphere_tags: List[str] = field(default_factory=list)
-    common_expressions: List[str] = field(default_factory=list)
-
-    long_term_tags: List[str] = field(default_factory=list)
-    blacklist_topics: List[str] = field(default_factory=list)
-
-    custom_fields: Dict[str, str] = field(default_factory=dict)
-
-    field_meta: Dict[str, Dict] = field(default_factory=dict)
-    update_tracker: Dict = field(default_factory=dict)
 
     def get_update_tracker(self) -> ProfileUpdateTracker:
         """获取更新追踪器（从dict恢复）"""
@@ -244,28 +195,83 @@ class GroupProfile:
             "source": meta.source,
         }
 
-    FIELD_TIERS: Dict[str, UpdateTier] = field(default_factory=lambda: {
-        "current_topic": UpdateTier.SHORT,
-        "active_users": UpdateTier.SHORT,
-        "interests": UpdateTier.MID,
-        "active_time_slots": UpdateTier.MID,
-        "atmosphere_tags": UpdateTier.MID,
-        "common_expressions": UpdateTier.MID,
-        "long_term_tags": UpdateTier.LONG,
-        "blacklist_topics": UpdateTier.LONG,
-    })
+
+# ============================================================================
+# 群聊画像
+# ============================================================================
+
+GROUP_FIELD_TIERS: Dict[str, UpdateTier] = {
+    "interests": UpdateTier.MID,
+    "atmosphere_tags": UpdateTier.MID,
+    "long_term_tags": UpdateTier.LONG,
+    "blacklist_topics": UpdateTier.LONG,
+}
+
+
+@dataclass
+class GroupProfile(ProfileMetadataMixin):
+    """群聊画像
+
+    记录群聊的整体特征和行为模式。
+    仅保留中长期字段。
+
+    Attributes:
+        group_id: 群聊ID
+        group_name: 群聊名称
+        version: 版本号（用于版本控制）
+
+        interests: 群聊兴趣点（中期，LLM分析更新）
+        atmosphere_tags: 氛围标签（中期）
+
+        long_term_tags: 核心特征标签（长期）
+        blacklist_topics: 禁忌话题（长期）
+
+        custom_fields: 扩展字段
+
+        field_meta: 各字段元数据（置信度、更新时间等）
+        update_tracker: 更新追踪器（控制更新频率）
+    """
+
+    group_id: str
+    group_name: str = ""
+    version: int = 1
+
+    interests: List[str] = field(default_factory=list)
+    atmosphere_tags: List[str] = field(default_factory=list)
+
+    long_term_tags: List[str] = field(default_factory=list)
+    blacklist_topics: List[str] = field(default_factory=list)
+
+    custom_fields: Dict[str, str] = field(default_factory=dict)
+
+    field_meta: Dict[str, Dict] = field(default_factory=dict)
+    update_tracker: Dict = field(default_factory=dict)
+
+    FIELD_TIERS = GROUP_FIELD_TIERS
 
 
 # ============================================================================
 # 用户画像
 # ============================================================================
 
+USER_FIELD_TIERS: Dict[str, UpdateTier] = {
+    "personality_tags": UpdateTier.MID,
+    "interests": UpdateTier.MID,
+    "language_style": UpdateTier.MID,
+    "occupation": UpdateTier.LONG,
+    "bot_relationship": UpdateTier.LONG,
+    "important_dates": UpdateTier.LONG,
+    "taboo_topics": UpdateTier.LONG,
+    "important_events": UpdateTier.LONG,
+}
+
+
 @dataclass
-class UserProfile:
+class UserProfile(ProfileMetadataMixin):
     """用户画像
 
     记录用户的个人特征和行为模式。
-    支持三层更新频率和字段置信度管理。
+    仅保留中长期字段。
 
     Attributes:
         user_id: 用户ID
@@ -273,9 +279,7 @@ class UserProfile:
         version: 版本号（用于版本控制）
 
         historical_names: 历史曾用ID（实时更新）
-        last_interaction_time: 最近互动时间（实时更新）
 
-        current_emotional_state: 当前情感状态（短期，规则更新）
         personality_tags: 性格标签（中期，LLM分析更新）
         interests: 兴趣爱好（中期）
         occupation: 职业/身份（长期）
@@ -297,9 +301,7 @@ class UserProfile:
     version: int = 1
 
     historical_names: List[str] = field(default_factory=list)
-    last_interaction_time: Optional[datetime] = None
 
-    current_emotional_state: str = ""
     personality_tags: List[str] = field(default_factory=list)
     interests: List[str] = field(default_factory=list)
     occupation: str = ""
@@ -315,69 +317,7 @@ class UserProfile:
     field_meta: Dict[str, Dict] = field(default_factory=dict)
     update_tracker: Dict = field(default_factory=dict)
 
-    def get_update_tracker(self) -> ProfileUpdateTracker:
-        """获取更新追踪器（从dict恢复）"""
-        if not self.update_tracker:
-            return ProfileUpdateTracker()
-        tracker = ProfileUpdateTracker()
-        data = self.update_tracker
-        tracker.summary_count_since_mid_update = data.get("summary_count_since_mid_update", 0)
-        if data.get("last_mid_update_time"):
-            if isinstance(data["last_mid_update_time"], str):
-                tracker.last_mid_update_time = datetime.fromisoformat(data["last_mid_update_time"])
-            elif isinstance(data["last_mid_update_time"], datetime):
-                tracker.last_mid_update_time = data["last_mid_update_time"]
-        if data.get("last_long_update_time"):
-            if isinstance(data["last_long_update_time"], str):
-                tracker.last_long_update_time = datetime.fromisoformat(data["last_long_update_time"])
-            elif isinstance(data["last_long_update_time"], datetime):
-                tracker.last_long_update_time = data["last_long_update_time"]
-        return tracker
-
-    def set_update_tracker(self, tracker: ProfileUpdateTracker) -> None:
-        """保存更新追踪器（转为dict存储）"""
-        self.update_tracker = {
-            "summary_count_since_mid_update": tracker.summary_count_since_mid_update,
-            "last_mid_update_time": tracker.last_mid_update_time.isoformat() if tracker.last_mid_update_time else None,
-            "last_long_update_time": tracker.last_long_update_time.isoformat() if tracker.last_long_update_time else None,
-        }
-
-    def get_field_meta(self, field_name: str) -> FieldMeta:
-        """获取字段元数据"""
-        if field_name not in self.field_meta:
-            return FieldMeta()
-        data = self.field_meta[field_name]
-        meta = FieldMeta()
-        meta.confidence = data.get("confidence", 0.0)
-        meta.update_count = data.get("update_count", 0)
-        meta.source = data.get("source", "")
-        if data.get("last_updated"):
-            if isinstance(data["last_updated"], str):
-                meta.last_updated = datetime.fromisoformat(data["last_updated"])
-            elif isinstance(data["last_updated"], datetime):
-                meta.last_updated = data["last_updated"]
-        return meta
-
-    def set_field_meta(self, field_name: str, meta: FieldMeta) -> None:
-        """设置字段元数据"""
-        self.field_meta[field_name] = {
-            "confidence": meta.confidence,
-            "last_updated": meta.last_updated.isoformat() if meta.last_updated else None,
-            "update_count": meta.update_count,
-            "source": meta.source,
-        }
-
-    FIELD_TIERS: Dict[str, UpdateTier] = field(default_factory=lambda: {
-        "current_emotional_state": UpdateTier.SHORT,
-        "personality_tags": UpdateTier.MID,
-        "interests": UpdateTier.MID,
-        "language_style": UpdateTier.MID,
-        "occupation": UpdateTier.LONG,
-        "bot_relationship": UpdateTier.LONG,
-        "important_dates": UpdateTier.LONG,
-        "taboo_topics": UpdateTier.LONG,
-        "important_events": UpdateTier.LONG,
-    })
+    FIELD_TIERS = USER_FIELD_TIERS
 
 
 # ============================================================================
@@ -407,9 +347,10 @@ def profile_to_dict(profile: Union[GroupProfile, UserProfile]) -> dict:
 
 
 def dict_to_group_profile(data: dict) -> GroupProfile:
-    """从字典创建群聊画像对象（处理datetime反序列化）
+    """从字典创建群聊画像对象
 
     兼容旧版数据：缺少 field_meta 和 update_tracker 时使用默认值。
+    自动忽略已移除的字段。
 
     Args:
         data: 字典数据
@@ -417,9 +358,6 @@ def dict_to_group_profile(data: dict) -> GroupProfile:
     Returns:
         GroupProfile 对象
     """
-    if "last_interaction_time" in data and isinstance(data["last_interaction_time"], str):
-        data["last_interaction_time"] = datetime.fromisoformat(data["last_interaction_time"])
-
     data.pop("FIELD_TIERS", None)
 
     valid_fields = {f.name for f in GroupProfile.__dataclass_fields__.values()}
@@ -429,9 +367,10 @@ def dict_to_group_profile(data: dict) -> GroupProfile:
 
 
 def dict_to_user_profile(data: dict) -> UserProfile:
-    """从字典创建用户画像对象（处理datetime反序列化）
+    """从字典创建用户画像对象
 
     兼容旧版数据：缺少 field_meta 和 update_tracker 时使用默认值。
+    自动忽略已移除的字段。
 
     Args:
         data: 字典数据
@@ -439,9 +378,6 @@ def dict_to_user_profile(data: dict) -> UserProfile:
     Returns:
         UserProfile 对象
     """
-    if "last_interaction_time" in data and isinstance(data["last_interaction_time"], str):
-        data["last_interaction_time"] = datetime.fromisoformat(data["last_interaction_time"])
-
     data.pop("FIELD_TIERS", None)
 
     valid_fields = {f.name for f in UserProfile.__dataclass_fields__.values()}
@@ -514,3 +450,29 @@ def should_overwrite_field(
     if existing_confidence < 0.3:
         return True
     return False
+
+
+class ProfileConfig:
+    """画像配置辅助类
+    
+    提供画像更新间隔配置的统一访问接口。
+    """
+    
+    DEFAULT_MID_INTERVAL_SUMMARIES = 5
+    DEFAULT_MID_INTERVAL_HOURS = 24.0
+    DEFAULT_LONG_INTERVAL_HOURS = 168.0
+    
+    @classmethod
+    def get_mid_update_interval_summaries(cls, config) -> int:
+        """获取中期更新的总结次数间隔"""
+        return config.get("profile_mid_update_interval_summaries", cls.DEFAULT_MID_INTERVAL_SUMMARIES)
+    
+    @classmethod
+    def get_mid_update_interval_hours(cls, config) -> float:
+        """获取中期更新的时间间隔（小时）"""
+        return config.get("profile_mid_update_interval_hours", cls.DEFAULT_MID_INTERVAL_HOURS)
+    
+    @classmethod
+    def get_long_update_interval_hours(cls, config) -> float:
+        """获取长期更新的时间间隔（小时）"""
+        return config.get("profile_long_update_interval_hours", cls.DEFAULT_LONG_INTERVAL_HOURS)

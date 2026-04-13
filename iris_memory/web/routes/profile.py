@@ -8,10 +8,57 @@
 from quart import Blueprint, jsonify, request
 from iris_memory.web.auth import dashboard_auth
 from iris_memory.core import get_component_manager, get_logger
-from typing import Dict, Any
+from iris_memory.profile.models import profile_to_dict
+from typing import Any, Optional, Tuple
+import os
 
 logger = get_logger("web.profile")
 profile_bp = Blueprint('profile', __name__)
+
+DEBUG_MODE = os.environ.get('IRIS_DEBUG', '').lower() in ('true', '1', 'yes')
+
+
+def get_profile_storage() -> Tuple[Optional[Any], Optional[Tuple]]:
+    """获取画像存储组件
+    
+    Returns:
+        (storage, error_response): 组件和错误响应元组
+        如果组件可用，返回 (storage, None)
+        如果组件不可用，返回 (None, (response, status_code))
+    """
+    manager = get_component_manager()
+    storage = manager.get_component("profile")
+    
+    if not storage or not storage.is_available:
+        return None, (jsonify({
+            'success': False,
+            'error': '画像系统不可用'
+        }), 503)
+    
+    return storage, None
+
+
+def handle_exception(e: Exception, operation: str) -> Tuple[Any, int]:
+    """统一异常处理
+    
+    Args:
+        e: 异常对象
+        operation: 操作描述
+    
+    Returns:
+        (response, status_code)
+    """
+    logger.error(f"{operation}失败：{e}", exc_info=True)
+    
+    if DEBUG_MODE:
+        error_msg = str(e)
+    else:
+        error_msg = "服务器内部错误"
+    
+    return jsonify({
+        'success': False,
+        'error': error_msg
+    }), 500
 
 
 @profile_bp.route('/group/<group_id>', methods=['GET'])
@@ -28,36 +75,30 @@ async def get_group_profile(group_id: str):
             "success": true,
             "profile": {
                 "group_id": "123456",
-                "atmosphere": "友好活跃",
-                "active_users": ["user1", "user2"],
-                "topics": ["游戏", "技术"],
-                "last_active_time": "2026-03-29T12:00:00"
+                "group_name": "测试群",
+                "interests": ["游戏", "技术"],
+                "atmosphere_tags": ["友好活跃", "技术范"],
+                "long_term_tags": ["技术交流群"],
+                "blacklist_topics": ["政治"],
+                "custom_fields": {},
+                "version": 1
             }
         }
     """
     try:
-        # 获取画像存储组件
-        manager = get_component_manager()
-        profile_storage = manager.get_component("profile")
+        profile_storage, error = get_profile_storage()
+        if error:
+            return error
         
-        if not profile_storage or not profile_storage.is_available:
-            return jsonify({
-                'success': False,
-                'error': '画像系统不可用'
-            }), 503
-        
-        # 获取画像
         profile = await profile_storage.get_group_profile(group_id)
         
         if not profile:
-            # 返回空画像（群聊可能还没有画像数据）
             return jsonify({
                 'success': True,
                 'profile': {}
             })
         
-        # 格式化响应
-        profile_data = profile.to_dict() if hasattr(profile, 'to_dict') else profile
+        profile_data = profile_to_dict(profile)
         
         logger.info(f"获取群聊画像成功：group_id={group_id}")
         
@@ -67,11 +108,7 @@ async def get_group_profile(group_id: str):
         })
     
     except Exception as e:
-        logger.error(f"获取群聊画像失败：{e}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return handle_exception(e, "获取群聊画像")
 
 
 @profile_bp.route('/group/<group_id>', methods=['PUT'])
@@ -85,8 +122,11 @@ async def update_group_profile(group_id: str):
     
     Request Body:
         {
-            "atmosphere": "友好活跃",
-            "topics": ["游戏", "技术"]
+            "group_name": "测试群",
+            "interests": ["游戏", "技术"],
+            "atmosphere_tags": ["友好活跃"],
+            "long_term_tags": ["技术交流群"],
+            "blacklist_topics": ["政治"]
         }
     
     Response:
@@ -104,17 +144,10 @@ async def update_group_profile(group_id: str):
                 'error': '请求体不能为空'
             }), 400
         
-        # 获取画像存储组件
-        manager = get_component_manager()
-        profile_storage = manager.get_component("profile")
+        profile_storage, error = get_profile_storage()
+        if error:
+            return error
         
-        if not profile_storage or not profile_storage.is_available:
-            return jsonify({
-                'success': False,
-                'error': '画像系统不可用'
-            }), 503
-        
-        # 更新画像
         success = await profile_storage.update_group_profile(group_id, data)
         
         if success:
@@ -130,11 +163,7 @@ async def update_group_profile(group_id: str):
             }), 500
     
     except Exception as e:
-        logger.error(f"更新群聊画像失败：{e}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return handle_exception(e, "更新群聊画像")
 
 
 @profile_bp.route('/user/<user_id>', methods=['GET'])
@@ -154,38 +183,37 @@ async def get_user_profile(user_id: str):
             "success": true,
             "profile": {
                 "user_id": "user123",
-                "nickname": "小明",
-                "interests": ["编程", "游戏"],
+                "user_name": "小明",
+                "historical_names": ["旧昵称"],
                 "personality_tags": ["开朗", "幽默"],
-                "last_active_time": "2026-03-29T12:00:00"
+                "interests": ["编程", "游戏"],
+                "occupation": "程序员",
+                "language_style": "简洁",
+                "bot_relationship": "助手",
+                "important_dates": [],
+                "taboo_topics": [],
+                "important_events": [],
+                "custom_fields": {},
+                "version": 1
             }
         }
     """
     try:
         group_id = request.args.get('group_id')
         
-        # 获取画像存储组件
-        manager = get_component_manager()
-        profile_storage = manager.get_component("profile")
+        profile_storage, error = get_profile_storage()
+        if error:
+            return error
         
-        if not profile_storage or not profile_storage.is_available:
-            return jsonify({
-                'success': False,
-                'error': '画像系统不可用'
-            }), 503
-        
-        # 获取画像
         profile = await profile_storage.get_user_profile(user_id, group_id)
         
         if not profile:
-            # 返回空画像（用户可能还没有画像数据）
             return jsonify({
                 'success': True,
                 'profile': {}
             })
         
-        # 格式化响应
-        profile_data = profile.to_dict() if hasattr(profile, 'to_dict') else profile
+        profile_data = profile_to_dict(profile)
         
         logger.info(f"获取用户画像成功：user_id={user_id}, group_id={group_id}")
         
@@ -195,11 +223,7 @@ async def get_user_profile(user_id: str):
         })
     
     except Exception as e:
-        logger.error(f"获取用户画像失败：{e}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return handle_exception(e, "获取用户画像")
 
 
 @profile_bp.route('/user/<user_id>', methods=['PUT'])
@@ -216,8 +240,12 @@ async def update_user_profile(user_id: str):
     
     Request Body:
         {
-            "nickname": "小明",
-            "interests": ["编程", "游戏"]
+            "user_name": "小明",
+            "personality_tags": ["开朗", "幽默"],
+            "interests": ["编程", "游戏"],
+            "occupation": "程序员",
+            "language_style": "简洁",
+            "bot_relationship": "助手"
         }
     
     Response:
@@ -236,17 +264,10 @@ async def update_user_profile(user_id: str):
                 'error': '请求体不能为空'
             }), 400
         
-        # 获取画像存储组件
-        manager = get_component_manager()
-        profile_storage = manager.get_component("profile")
+        profile_storage, error = get_profile_storage()
+        if error:
+            return error
         
-        if not profile_storage or not profile_storage.is_available:
-            return jsonify({
-                'success': False,
-                'error': '画像系统不可用'
-            }), 503
-        
-        # 更新画像
         success = await profile_storage.update_user_profile(
             user_id=user_id,
             group_id=group_id or "default",
@@ -266,11 +287,7 @@ async def update_user_profile(user_id: str):
             }), 500
     
     except Exception as e:
-        logger.error(f"更新用户画像失败：{e}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return handle_exception(e, "更新用户画像")
 
 
 @profile_bp.route('/groups', methods=['GET'])
@@ -292,17 +309,10 @@ async def list_group_profiles():
         }
     """
     try:
-        # 获取画像存储组件
-        manager = get_component_manager()
-        profile_storage = manager.get_component("profile")
+        profile_storage, error = get_profile_storage()
+        if error:
+            return error
         
-        if not profile_storage or not profile_storage.is_available:
-            return jsonify({
-                'success': False,
-                'error': '画像系统不可用'
-            }), 503
-        
-        # 获取群聊列表
         groups = await profile_storage.list_groups()
         
         return jsonify({
@@ -311,11 +321,7 @@ async def list_group_profiles():
         })
     
     except Exception as e:
-        logger.error(f"获取群聊列表失败：{e}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return handle_exception(e, "获取群聊列表")
 
 
 @profile_bp.route('/users', methods=['GET'])
@@ -342,14 +348,9 @@ async def list_user_profiles():
     try:
         group_id = request.args.get('group_id', 'default')
         
-        manager = get_component_manager()
-        profile_storage = manager.get_component("profile")
-        
-        if not profile_storage or not profile_storage.is_available:
-            return jsonify({
-                'success': False,
-                'error': '画像系统不可用'
-            }), 503
+        profile_storage, error = get_profile_storage()
+        if error:
+            return error
         
         users = await profile_storage.list_users(group_id)
         
@@ -359,8 +360,4 @@ async def list_user_profiles():
         })
     
     except Exception as e:
-        logger.error(f"获取用户列表失败：{e}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return handle_exception(e, "获取用户列表")

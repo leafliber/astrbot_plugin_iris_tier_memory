@@ -517,24 +517,11 @@ class L1Buffer(Component):
             return
 
         try:
-            from iris_memory.profile import GroupProfileManager, UserProfileManager, ProfileAnalyzer
+            from iris_memory.profile import GroupProfileManager, UserProfileManager
             from iris_memory.profile.models import UpdateTier
-            from .summarizer import parse_summary_response
 
             group_manager = GroupProfileManager(profile_storage)
             user_manager = UserProfileManager(profile_storage)
-
-            active_users = list(
-                set(msg.source for msg in messages if msg.role == "user")
-            )
-
-            current_topic = summary[:100] if len(summary) > 100 else summary
-
-            await group_manager.update_simple_fields(
-                group_id=group_id,
-                current_topic=current_topic,
-                active_users=active_users
-            )
 
             user_messages_by_id: dict[str, list[str]] = {}
             for msg in messages:
@@ -542,20 +529,6 @@ class L1Buffer(Component):
                     user_messages_by_id.setdefault(msg.source, []).append(msg.content)
 
             effective_group_id = group_id if config.get("isolation_config.enable_group_isolation") else "default"
-
-            for user_id, user_msgs in user_messages_by_id.items():
-                from iris_memory.profile.analyzer import ProfileAnalyzer
-                llm_manager = self._component_manager.get_component("llm_manager")
-                if llm_manager and llm_manager.is_available:
-                    analyzer = ProfileAnalyzer(llm_manager)
-                    emotion, confidence = analyzer.detect_emotional_state(user_msgs)
-                    if emotion:
-                        await user_manager.update_short_term_fields(
-                            user_id=user_id,
-                            group_id=effective_group_id,
-                            emotional_state=emotion,
-                            emotional_confidence=confidence
-                        )
 
             group_profile_obj = await group_manager.get_or_create(group_id)
             if group_manager.should_update_mid(group_profile_obj):
@@ -626,7 +599,6 @@ class L1Buffer(Component):
                     group_id=group_id,
                     interests=result.get("interests"),
                     atmosphere_tags=result.get("atmosphere_tags"),
-                    common_expressions=result.get("common_expressions"),
                     custom_fields=result.get("custom_fields"),
                     tier=UpdateTier.MID,
                     confidence=0.7
@@ -724,6 +696,7 @@ class L1Buffer(Component):
                     group_id=group_id,
                     personality_tags=result.get("personality_tags"),
                     interests=result.get("interests"),
+                    occupation=result.get("occupation"),
                     language_style=result.get("language_style"),
                     custom_fields=result.get("custom_fields"),
                     tier=UpdateTier.MID,

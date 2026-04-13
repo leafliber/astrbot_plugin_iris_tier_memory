@@ -1,8 +1,8 @@
 """
 Iris Tier Memory - 画像分析器
 
-使用规则 + LLM 混合策略分析画像特征。
-短期字段使用规则匹配（无LLM），中长期字段使用LLM分析。
+使用 LLM 分析画像特征。
+仅保留中长期字段分析。
 """
 
 from typing import List, Dict, Optional, Union, TYPE_CHECKING
@@ -18,27 +18,11 @@ if TYPE_CHECKING:
 logger = get_logger("profile")
 
 
-EMOTION_KEYWORDS: Dict[str, List[str]] = {
-    "愉快": ["哈哈", "嘻嘻", "开心", "高兴", "快乐", "太好了", "好耶", "棒", "赞", "喜欢", "爱", "幸福", "😄", "😊", "🎉", "😂", "🤣"],
-    "兴奋": ["太棒了", "太强了", "厉害", "牛", "绝了", "yyds", "冲", "燃", "🔥", "💪", "🚀"],
-    "困惑": ["不懂", "不理解", "什么意思", "为什么", "怎么回事", "迷茫", "困惑", "❓", "🤔"],
-    "沮丧": ["唉", "难过", "伤心", "失望", "郁闷", "烦", "累", "无语", "😔", "😢", "😭"],
-    "愤怒": ["生气", "愤怒", "烦死了", "气死", "可恶", "讨厌", "😡", "🤬"],
-    "焦虑": ["担心", "害怕", "焦虑", "紧张", "不安", "着急", "慌", "😰", "😟"],
-    "平静": ["嗯", "好的", "了解", "明白", "知道了", "行", "可以", "哦"],
-}
-
-EMOTION_RULE_CONFIDENCE = 0.5
-EMOTION_LLM_CONFIDENCE = 0.8
-
-
 class ProfileAnalyzer:
     """画像分析器
 
-    使用规则 + LLM 混合策略分析画像特征。
-    短期字段（情感状态等）使用规则匹配，无需LLM调用。
-    中期字段使用轻量LLM分析。
-    长期字段使用深度LLM分析，要求高置信度。
+    使用 LLM 分析画像特征。
+    仅保留中长期字段分析。
 
     Attributes:
         _llm_manager: LLM 调用管理器实例
@@ -46,47 +30,6 @@ class ProfileAnalyzer:
 
     def __init__(self, llm_manager: "LLMManager"):
         self._llm_manager = llm_manager
-
-    def detect_emotional_state(self, messages: List[str]) -> tuple[str, float]:
-        """规则检测情感状态（无需LLM）
-
-        通过关键词匹配检测消息中的情感倾向。
-        返回 (情感状态, 置信度)。
-
-        Args:
-            messages: 近期对话消息列表
-
-        Returns:
-            (情感状态字符串, 置信度0.0~1.0)
-        """
-        if not messages:
-            return "", 0.0
-
-        emotion_scores: Dict[str, int] = {}
-        total_matches = 0
-
-        for msg in messages:
-            for emotion, keywords in EMOTION_KEYWORDS.items():
-                for keyword in keywords:
-                    if keyword in msg:
-                        emotion_scores[emotion] = emotion_scores.get(emotion, 0) + 1
-                        total_matches += 1
-                        break
-
-        if not emotion_scores:
-            return "", 0.0
-
-        dominant_emotion = max(emotion_scores, key=emotion_scores.get)
-        match_ratio = emotion_scores[dominant_emotion] / max(len(messages), 1)
-
-        if match_ratio >= 0.5:
-            confidence = EMOTION_RULE_CONFIDENCE + 0.2
-        elif match_ratio >= 0.3:
-            confidence = EMOTION_RULE_CONFIDENCE + 0.1
-        else:
-            confidence = EMOTION_RULE_CONFIDENCE
-
-        return dominant_emotion, min(confidence, 0.9)
 
     async def analyze_group_profile(
         self,
@@ -104,9 +47,6 @@ class ProfileAnalyzer:
         Returns:
             分析结果字典
         """
-        if tier == UpdateTier.SHORT:
-            return self._analyze_group_short(messages)
-
         prompt = self._build_group_analysis_prompt(messages, current_profile, tier)
 
         try:
@@ -139,9 +79,6 @@ class ProfileAnalyzer:
         Returns:
             分析结果字典
         """
-        if tier == UpdateTier.SHORT:
-            return self._analyze_user_short(messages)
-
         prompt = self._build_user_analysis_prompt(messages, current_profile, tier)
 
         try:
@@ -157,33 +94,6 @@ class ProfileAnalyzer:
         except Exception as e:
             logger.error(f"用户画像分析失败: {e}")
             return {}
-
-    def _analyze_group_short(self, messages: List[str]) -> Dict[str, List[str]]:
-        """群聊画像短期分析（规则，无LLM）
-
-        Args:
-            messages: 近期对话消息列表
-
-        Returns:
-            短期分析结果
-        """
-        return {}
-
-    def _analyze_user_short(self, messages: List[str]) -> Dict[str, str]:
-        """用户画像短期分析（规则，无LLM）
-
-        仅检测情感状态，无需LLM。
-
-        Args:
-            messages: 用户近期对话列表
-
-        Returns:
-            短期分析结果
-        """
-        emotion, confidence = self.detect_emotional_state(messages)
-        if emotion:
-            return {"emotional_state": emotion, "emotional_confidence": str(confidence)}
-        return {}
 
     def _build_group_analysis_prompt(
         self,
@@ -203,7 +113,7 @@ class ProfileAnalyzer:
         """
         try:
             config = get_config()
-            max_messages = config.get("profile_max_messages_for_analysis") if hasattr(config, 'get') else 50
+            max_messages = config.get("profile_max_messages_for_analysis", 50)
         except RuntimeError:
             max_messages = 50
         limited_messages = messages[:max_messages]
@@ -223,7 +133,6 @@ class ProfileAnalyzer:
 {{
     "interests": ["群聊兴趣点1", "兴趣点2"],
     "atmosphere_tags": ["氛围标签1", "标签2"],
-    "common_expressions": ["常用语或群内梗"],
     "custom_fields": {{
         "自定义字段名": "字段值"
     }}
@@ -231,10 +140,10 @@ class ProfileAnalyzer:
 
 注意：
 1. 基于对话内容客观分析
-2. 兴趣点应是多次出现的话题
-3. 氛围标签描述群聊整体风格
-4. 常用语应为群内特有的表达
-5. custom_fields 用于存储额外有价值信息
+2. 兴趣点应是多次出现的话题，最多5个
+3. 氛围标签描述群聊整体风格，最多3个
+4. custom_fields 用于存储额外有价值信息
+5. 不确定或无法判断的字段返回空数组
 
 仅返回JSON，不要其他内容。"""
 
@@ -274,10 +183,11 @@ class ProfileAnalyzer:
 }}
 
 注意：
-1. 长期标签描述群聊的核心身份特征（如"技术交流群"、"游戏群"）
-2. 禁忌话题是群内明确不宜讨论的内容
-3. 只有确实发现变化时才更新 interests 和 atmosphere_tags
-4. 宁可少标不要多标，长期标签必须高度可靠
+1. 长期标签描述群聊的核心身份特征（如"技术交流群"、"游戏群"），最多3个
+2. 禁忌话题是群内明确不宜讨论的内容，必须非常确定才填写
+3. 只有确实发现显著变化时才更新 interests 和 atmosphere_tags
+4. 宁可少标不要多标，长期特征必须高度可靠
+5. 不确定或无法判断的字段返回空数组
 
 仅返回JSON，不要其他内容。"""
 
@@ -299,7 +209,7 @@ class ProfileAnalyzer:
         """
         try:
             config = get_config()
-            max_messages = config.get("profile_max_messages_for_analysis") if hasattr(config, 'get') else 30
+            max_messages = config.get("profile_max_messages_for_analysis", 30)
         except RuntimeError:
             max_messages = 30
         limited_messages = messages[:max_messages]
@@ -326,10 +236,11 @@ class ProfileAnalyzer:
 }}
 
 注意：
-1. 性格标签基于对话风格推断
-2. 兴趣应从对话内容中识别
-3. 语言风格描述用户的表达习惯
-4. custom_fields 用于存储额外有价值信息（如职业背景、技能水平等）
+1. 性格标签基于对话风格推断，最多3个标签
+2. 兴趣应从对话内容中识别，最多5个
+3. 语言风格描述用户的表达习惯（如"简洁"、"幽默"、"正式"）
+4. custom_fields 用于存储额外有价值信息
+5. 不确定或无法判断的字段返回空数组或空字符串
 
 仅返回JSON，不要其他内容。"""
 
@@ -373,10 +284,11 @@ class ProfileAnalyzer:
 
 注意：
 1. 长期特征必须高度可靠，宁可留空不要猜测
-2. occupation 仅在对话中有明确线索时填写
-3. bot_relationship 仅在用户有明确称呼习惯时填写
-4. important_events 只记录真正重要的事件（如工作变动、人生里程碑）
-5. 只有确实发现变化时才更新 personality_tags 和 interests
+2. occupation 仅在对话中有明确线索时填写（如提到"今天加班写代码"）
+3. bot_relationship 仅在用户有明确称呼习惯时填写（如"小助手"、"老师"）
+4. important_events 只记录真正重要的事件（如工作变动、人生里程碑），最多5个
+5. 只有确实发现显著变化时才更新 personality_tags 和 interests
+6. 不确定或无法判断的字段返回空数组或空字符串
 
 仅返回JSON，不要其他内容。"""
 

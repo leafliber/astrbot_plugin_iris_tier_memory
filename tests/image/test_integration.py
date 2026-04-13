@@ -95,9 +95,7 @@ class TestImageParsingIntegration:
 
         with patch("iris_memory.core.message_hook.get_config") as mock_get_config, patch(
             "iris_memory.core.message_hook.get_adapter"
-        ) as mock_get_adapter, patch(
-            "iris_memory.core.message_hook._update_user_profile"
-        ):
+        ) as mock_get_adapter:
 
             # 配置 mock
             mock_config = Mock()
@@ -141,9 +139,7 @@ class TestImageParsingIntegration:
         """测试 related 模式下不解析图片"""
         with patch("iris_memory.core.message_hook.get_config") as mock_get_config, patch(
             "iris_memory.core.message_hook.get_adapter"
-        ) as mock_get_adapter, patch(
-            "iris_memory.core.message_hook._update_user_profile"
-        ):
+        ) as mock_get_adapter:
 
             # 配置 mock
             mock_config = Mock()
@@ -174,9 +170,7 @@ class TestImageParsingIntegration:
         """测试禁用图片解析"""
         with patch("iris_memory.core.message_hook.get_config") as mock_get_config, patch(
             "iris_memory.core.message_hook.get_adapter"
-        ) as mock_get_adapter, patch(
-            "iris_memory.core.message_hook._update_user_profile"
-        ):
+        ) as mock_get_adapter:
 
             # 配置 mock
             mock_config = Mock()
@@ -209,9 +203,7 @@ class TestImageParsingIntegration:
 
         with patch("iris_memory.core.message_hook.get_config") as mock_get_config, patch(
             "iris_memory.core.message_hook.get_adapter"
-        ) as mock_get_adapter, patch(
-            "iris_memory.core.message_hook._update_user_profile"
-        ):
+        ) as mock_get_adapter:
 
             # 配置 mock
             mock_config = Mock()
@@ -249,9 +241,7 @@ class TestImageParsingIntegration:
 
         with patch("iris_memory.core.message_hook.get_config") as mock_get_config, patch(
             "iris_memory.core.message_hook.get_adapter"
-        ) as mock_get_adapter, patch(
-            "iris_memory.core.message_hook._update_user_profile"
-        ):
+        ) as mock_get_adapter:
 
             # 配置 mock
             mock_config = Mock()
@@ -290,9 +280,7 @@ class TestImageParsingIntegration:
 
         with patch("iris_memory.core.message_hook.get_config") as mock_get_config, patch(
             "iris_memory.core.message_hook.get_adapter"
-        ) as mock_get_adapter, patch(
-            "iris_memory.core.message_hook._update_user_profile"
-        ):
+        ) as mock_get_adapter:
 
             # 配置 mock
             mock_config = Mock()
@@ -345,9 +333,7 @@ class TestImageParsingIntegration:
 
         with patch("iris_memory.core.message_hook.get_config") as mock_get_config, patch(
             "iris_memory.core.message_hook.get_adapter"
-        ) as mock_get_adapter, patch(
-            "iris_memory.core.message_hook._update_user_profile"
-        ):
+        ) as mock_get_adapter:
 
             # 配置 mock
             mock_config = Mock()
@@ -389,9 +375,7 @@ class TestImageParsingIntegration:
 
         with patch("iris_memory.core.message_hook.get_config") as mock_get_config, patch(
             "iris_memory.core.message_hook.get_adapter"
-        ) as mock_get_adapter, patch(
-            "iris_memory.core.message_hook._update_user_profile"
-        ):
+        ) as mock_get_adapter:
 
             # 配置 mock
             mock_config = Mock()
@@ -431,9 +415,7 @@ class TestImageParsingIntegration:
 
         with patch("iris_memory.core.message_hook.get_config") as mock_get_config, patch(
             "iris_memory.core.message_hook.get_adapter"
-        ) as mock_get_adapter, patch(
-            "iris_memory.core.message_hook._update_user_profile"
-        ):
+        ) as mock_get_adapter:
 
             # 配置 mock
             mock_config = Mock()
@@ -469,8 +451,6 @@ class TestImageParsingIntegration:
         with patch("iris_memory.core.message_hook.get_config") as mock_get_config, patch(
             "iris_memory.core.message_hook.get_adapter"
         ) as mock_get_adapter, patch(
-            "iris_memory.core.message_hook._update_user_profile"
-        ), patch(
             "iris_memory.image.ImageParser"
         ) as MockImageParser:
 

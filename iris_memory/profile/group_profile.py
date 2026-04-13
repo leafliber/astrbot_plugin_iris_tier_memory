@@ -2,21 +2,19 @@
 Iris Tier Memory - 群聊画像管理器
 
 封装群聊画像的业务逻辑。
-支持三层更新频率和智能合并策略。
+仅保留中长期字段更新。
 """
 
 from typing import List, Optional
-from datetime import datetime
 
 from iris_memory.core import get_logger
 from iris_memory.config import get_config
 from .storage import ProfileStorage
 from .models import (
     GroupProfile,
-    FieldMeta,
-    ProfileUpdateTracker,
     UpdateTier,
     merge_list_field,
+    ProfileConfig,
 )
 
 logger = get_logger("profile")
@@ -56,48 +54,23 @@ class GroupProfileManager:
 
         return profile
 
-    async def update_simple_fields(
-        self,
-        group_id: str,
-        current_topic: Optional[str] = None,
-        active_users: Optional[List[str]] = None,
-        group_name: Optional[str] = None
-    ) -> None:
-        """更新简单字段（实时记录，无LLM）
-
-        简单字段包括：当前话题、活跃用户列表、最近互动时间、群聊名称。
+    async def update_group_name(self, group_id: str, group_name: str) -> None:
+        """更新群聊名称
 
         Args:
             group_id: 群聊ID
-            current_topic: 当前话题（可选）
-            active_users: 活跃用户列表（可选）
-            group_name: 群聊名称（可选）
+            group_name: 群聊名称
         """
         profile = await self.get_or_create(group_id)
-
-        name_changed = False
-        if current_topic is not None:
-            profile.current_topic = current_topic
-
-        if active_users is not None:
-            profile.active_users = active_users
-
-        if group_name is not None:
-            profile.group_name = group_name
-            name_changed = True
-
-        profile.last_interaction_time = datetime.now()
-
-        await self._storage.save_group_profile(profile, increment_version=name_changed)
-        logger.debug(f"更新群聊画像简单字段: {group_id}")
+        profile.group_name = group_name
+        await self._storage.save_group_profile(profile, increment_version=True)
+        logger.debug(f"更新群聊名称: {group_id} -> {group_name}")
 
     async def update_from_analysis(
         self,
         group_id: str,
         interests: Optional[List[str]] = None,
         atmosphere_tags: Optional[List[str]] = None,
-        common_expressions: Optional[List[str]] = None,
-        active_time_slots: Optional[List[str]] = None,
         custom_fields: Optional[dict] = None,
         tier: UpdateTier = UpdateTier.MID,
         confidence: float = 0.7
@@ -106,14 +79,11 @@ class GroupProfileManager:
 
         根据更新层级和置信度智能合并字段：
         - 列表字段：合并新旧值，新值优先
-        - 长期字段：要求更高置信度才覆盖
 
         Args:
             group_id: 群聊ID
             interests: 群聊兴趣点列表
             atmosphere_tags: 氛围标签列表
-            common_expressions: 常用语/梗列表
-            active_time_slots: 活跃时段列表
             custom_fields: 自定义字段字典
             tier: 更新层级
             confidence: 本次分析的整体置信度
@@ -137,24 +107,6 @@ class GroupProfileManager:
                 profile.atmosphere_tags = merged
                 meta.record_update(confidence, source="llm")
                 profile.set_field_meta("atmosphere_tags", meta)
-                updated = True
-
-        if common_expressions is not None:
-            meta = profile.get_field_meta("common_expressions")
-            merged = merge_list_field(profile.common_expressions, common_expressions, max_items=30)
-            if merged != profile.common_expressions:
-                profile.common_expressions = merged
-                meta.record_update(confidence, source="llm")
-                profile.set_field_meta("common_expressions", meta)
-                updated = True
-
-        if active_time_slots is not None:
-            meta = profile.get_field_meta("active_time_slots")
-            merged = merge_list_field(profile.active_time_slots, active_time_slots)
-            if merged != profile.active_time_slots:
-                profile.active_time_slots = merged
-                meta.record_update(confidence, source="llm")
-                profile.set_field_meta("active_time_slots", meta)
                 updated = True
 
         if custom_fields:
@@ -261,8 +213,8 @@ class GroupProfileManager:
             是否需要更新
         """
         config = get_config()
-        interval_summaries = config.get("profile_mid_update_interval_summaries") if hasattr(config, 'get') else 5
-        interval_hours = config.get("profile_mid_update_interval_hours") if hasattr(config, 'get') else 24.0
+        interval_summaries = ProfileConfig.get_mid_update_interval_summaries(config)
+        interval_hours = ProfileConfig.get_mid_update_interval_hours(config)
 
         tracker = profile.get_update_tracker()
         return tracker.should_update_mid(interval_summaries, interval_hours)
@@ -277,7 +229,7 @@ class GroupProfileManager:
             是否需要更新
         """
         config = get_config()
-        interval_hours = config.get("profile_long_update_interval_hours") if hasattr(config, 'get') else 168.0
+        interval_hours = ProfileConfig.get_long_update_interval_hours(config)
 
         tracker = profile.get_update_tracker()
         return tracker.should_update_long(interval_hours)

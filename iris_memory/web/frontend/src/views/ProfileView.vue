@@ -116,35 +116,7 @@
                         </div>
                       </div>
 
-                      <v-row>
-                        <v-col cols="12" sm="6">
-                          <v-card variant="outlined" class="info-card">
-                            <v-card-text>
-                              <div class="d-flex align-center mb-2">
-                                <v-icon icon="mdi-chat" color="primary" size="small" class="mr-2" />
-                                <span class="text-caption text-medium-emphasis">当前话题</span>
-                              </div>
-                              <div class="text-body-1">{{ profileStore.currentGroupProfile.current_topic || '暂无' }}</div>
-                            </v-card-text>
-                          </v-card>
-                        </v-col>
-
-                        <v-col cols="12" sm="6">
-                          <v-card variant="outlined" class="info-card">
-                            <v-card-text>
-                              <div class="d-flex align-center mb-2">
-                                <v-icon icon="mdi-clock-outline" color="secondary" size="small" class="mr-2" />
-                                <span class="text-caption text-medium-emphasis">最后活跃</span>
-                              </div>
-                              <div class="text-body-1">
-                                {{ profileStore.currentGroupProfile.last_interaction_time ? formatTime(profileStore.currentGroupProfile.last_interaction_time) : '暂无' }}
-                              </div>
-                            </v-card-text>
-                          </v-card>
-                        </v-col>
-                      </v-row>
-
-                      <v-card variant="outlined" class="info-card mt-4">
+                      <v-card variant="outlined" class="info-card">
                         <v-card-title class="text-subtitle-2 pb-0">
                           <v-icon icon="mdi-emoticon-outline" color="accent" class="mr-2" />
                           群聊氛围
@@ -185,78 +157,6 @@
                             </v-chip>
                           </div>
                           <div v-else class="text-medium-emphasis text-body-2">暂无兴趣标签</div>
-                        </v-card-text>
-                      </v-card>
-
-                      <v-row class="mt-4">
-                        <v-col cols="12" sm="6">
-                          <v-card variant="outlined" class="info-card">
-                            <v-card-title class="text-subtitle-2 pb-0">
-                              <v-icon icon="mdi-account-multiple" color="success" class="mr-2" />
-                              活跃用户
-                            </v-card-title>
-                            <v-card-text>
-                              <div v-if="profileStore.currentGroupProfile.active_users?.length">
-                                <v-chip
-                                  v-for="user in profileStore.currentGroupProfile.active_users"
-                                  :key="user"
-                                  color="success"
-                                  variant="tonal"
-                                  size="small"
-                                  class="ma-1"
-                                >
-                                  {{ user }}
-                                </v-chip>
-                              </div>
-                              <div v-else class="text-medium-emphasis text-body-2">暂无数据</div>
-                            </v-card-text>
-                          </v-card>
-                        </v-col>
-
-                        <v-col cols="12" sm="6">
-                          <v-card variant="outlined" class="info-card">
-                            <v-card-title class="text-subtitle-2 pb-0">
-                              <v-icon icon="mdi-clock-check" color="info" class="mr-2" />
-                              活跃时段
-                            </v-card-title>
-                            <v-card-text>
-                              <div v-if="profileStore.currentGroupProfile.active_time_slots?.length">
-                                <v-chip
-                                  v-for="slot in profileStore.currentGroupProfile.active_time_slots"
-                                  :key="slot"
-                                  color="info"
-                                  variant="tonal"
-                                  size="small"
-                                  class="ma-1"
-                                >
-                                  {{ slot }}
-                                </v-chip>
-                              </div>
-                              <div v-else class="text-medium-emphasis text-body-2">暂无数据</div>
-                            </v-card-text>
-                          </v-card>
-                        </v-col>
-                      </v-row>
-
-                      <v-card variant="outlined" class="info-card mt-4">
-                        <v-card-title class="text-subtitle-2 pb-0">
-                          <v-icon icon="mdi-format-quote-close" color="purple" class="mr-2" />
-                          常用语/梗
-                        </v-card-title>
-                        <v-card-text>
-                          <div v-if="profileStore.currentGroupProfile.common_expressions?.length" class="tags-container">
-                            <v-chip
-                              v-for="expr in profileStore.currentGroupProfile.common_expressions"
-                              :key="expr"
-                              color="purple"
-                              variant="tonal"
-                              size="small"
-                              class="ma-1"
-                            >
-                              {{ expr }}
-                            </v-chip>
-                          </div>
-                          <div v-else class="text-medium-emphasis text-body-2">暂无数据</div>
                         </v-card-text>
                       </v-card>
 
@@ -422,18 +322,6 @@
                           <v-card variant="outlined" class="info-card">
                             <v-card-text>
                               <div class="d-flex align-center mb-2">
-                                <v-icon icon="mdi-emoticon" color="pink" size="small" class="mr-2" />
-                                <span class="text-caption text-medium-emphasis">当前情感状态</span>
-                              </div>
-                              <div class="text-body-1">{{ profileStore.currentUserProfile.current_emotional_state || '暂无' }}</div>
-                            </v-card-text>
-                          </v-card>
-                        </v-col>
-
-                        <v-col cols="12" sm="6">
-                          <v-card variant="outlined" class="info-card">
-                            <v-card-text>
-                              <div class="d-flex align-center mb-2">
                                 <v-icon icon="mdi-briefcase" color="primary" size="small" class="mr-2" />
                                 <span class="text-caption text-medium-emphasis">职业/身份</span>
                               </div>
@@ -441,9 +329,7 @@
                             </v-card-text>
                           </v-card>
                         </v-col>
-                      </v-row>
 
-                      <v-row class="mt-0">
                         <v-col cols="12" sm="6">
                           <v-card variant="outlined" class="info-card">
                             <v-card-text>
@@ -455,7 +341,9 @@
                             </v-card-text>
                           </v-card>
                         </v-col>
+                      </v-row>
 
+                      <v-row>
                         <v-col cols="12" sm="6">
                           <v-card variant="outlined" class="info-card">
                             <v-card-text>
@@ -596,14 +484,6 @@
                               {{ topic }}
                             </v-chip>
                           </div>
-                        </v-card-text>
-                      </v-card>
-
-                      <v-card variant="outlined" class="info-card mt-4" v-if="profileStore.currentUserProfile.last_interaction_time">
-                        <v-card-text class="text-center">
-                          <v-icon icon="mdi-clock-outline" color="medium-emphasis" class="mr-2" />
-                          <span class="text-medium-emphasis">最后活跃：</span>
-                          <span>{{ formatTime(profileStore.currentUserProfile.last_interaction_time) }}</span>
                         </v-card-text>
                       </v-card>
                     </div>

@@ -2,22 +2,20 @@
 Iris Tier Memory - 用户画像管理器
 
 封装用户画像的业务逻辑。
-支持三层更新频率和智能合并策略。
+仅保留中长期字段更新。
 """
 
 from typing import List, Optional, Dict
-from datetime import datetime
 
 from iris_memory.core import get_logger
 from iris_memory.config import get_config
 from .storage import ProfileStorage
 from .models import (
     UserProfile,
-    FieldMeta,
-    ProfileUpdateTracker,
     UpdateTier,
     merge_list_field,
     should_overwrite_field,
+    ProfileConfig,
 )
 
 logger = get_logger("profile")
@@ -28,8 +26,6 @@ class UserProfileManager:
 
     封装用户画像的业务逻辑，提供：
     - 获取/创建画像
-    - 更新简单字段（实时，无LLM）
-    - 更新短期字段（规则匹配，无LLM）
     - 更新中期字段（LLM分析，按频率触发）
     - 更新长期字段（LLM分析，高置信度触发）
     - 智能合并：列表字段合并而非替换，置信度控制覆盖
@@ -64,84 +60,35 @@ class UserProfileManager:
 
         return profile
 
-    async def update_simple_fields(
+    async def update_user_name(
         self,
         user_id: str,
         group_id: str = "default",
         user_name: Optional[str] = None
     ) -> None:
-        """更新简单字段（实时记录，无LLM）
-
-        简单字段包括：用户昵称、最近互动时间、曾用名。
+        """更新用户昵称
 
         Args:
             user_id: 用户ID
             group_id: 群聊ID
-            user_name: 用户昵称（可选）
+            user_name: 用户昵称
         """
-        profile = await self.get_or_create(user_id, group_id)
-
-        name_changed = False
-        if user_name and user_name != profile.user_name:
-            if profile.user_name and profile.user_name not in profile.historical_names:
-                profile.historical_names.append(profile.user_name)
-            profile.user_name = user_name
-            name_changed = True
-            logger.debug(f"更新用户昵称: {user_id} -> {user_name}")
-
-        profile.last_interaction_time = datetime.now()
-
-        tracker = profile.get_update_tracker()
-        tracker.increment_summary_count()
-        profile.set_update_tracker(tracker)
-
-        await self._storage.save_user_profile(profile, group_id, increment_version=name_changed)
-        logger.debug(f"更新用户画像简单字段: {user_id} (群聊: {group_id})")
-
-    async def update_short_term_fields(
-        self,
-        user_id: str,
-        group_id: str,
-        emotional_state: str = "",
-        emotional_confidence: float = 0.5
-    ) -> None:
-        """更新短期字段（规则匹配，无LLM）
-
-        短期字段包括：当前情感状态。
-        使用置信度控制是否覆盖。
-
-        Args:
-            user_id: 用户ID
-            group_id: 群聊ID
-            emotional_state: 情感状态
-            emotional_confidence: 情感状态置信度
-        """
-        if not emotional_state:
+        if not user_name:
             return
 
         profile = await self.get_or_create(user_id, group_id)
 
-        meta = profile.get_field_meta("current_emotional_state")
-        existing_confidence = meta.confidence
-
-        if should_overwrite_field(
-            profile.current_emotional_state,
-            emotional_state,
-            existing_confidence,
-            emotional_confidence
-        ):
-            profile.current_emotional_state = emotional_state
-            meta.record_update(emotional_confidence, source="rule")
-            profile.set_field_meta("current_emotional_state", meta)
-            logger.debug(f"更新用户情感状态: {user_id} -> {emotional_state} (conf={emotional_confidence:.2f})")
-
-        await self._storage.save_user_profile(profile, group_id, increment_version=False)
+        if user_name != profile.user_name:
+            if profile.user_name and profile.user_name not in profile.historical_names:
+                profile.historical_names.append(profile.user_name)
+            profile.user_name = user_name
+            await self._storage.save_user_profile(profile, group_id, increment_version=True)
+            logger.debug(f"更新用户昵称: {user_id} -> {user_name}")
 
     async def update_from_analysis(
         self,
         user_id: str,
         group_id: str,
-        emotional_state: str = "",
         personality_tags: Optional[List[str]] = None,
         interests: Optional[List[str]] = None,
         occupation: Optional[str] = None,
@@ -155,12 +102,10 @@ class UserProfileManager:
         根据更新层级和置信度智能合并字段：
         - 列表字段：合并新旧值，新值优先
         - 字符串字段：置信度更高时覆盖
-        - 长期字段：要求更高置信度才覆盖
 
         Args:
             user_id: 用户ID
             group_id: 群聊ID
-            emotional_state: 当前情感状态
             personality_tags: 性格标签列表
             interests: 兴趣爱好列表
             occupation: 职业/身份
@@ -171,19 +116,6 @@ class UserProfileManager:
         """
         profile = await self.get_or_create(user_id, group_id)
         updated = False
-
-        if emotional_state:
-            meta = profile.get_field_meta("current_emotional_state")
-            if should_overwrite_field(
-                profile.current_emotional_state,
-                emotional_state,
-                meta.confidence,
-                confidence
-            ):
-                profile.current_emotional_state = emotional_state
-                meta.record_update(confidence, source="llm")
-                profile.set_field_meta("current_emotional_state", meta)
-                updated = True
 
         if personality_tags is not None:
             meta = profile.get_field_meta("personality_tags")
@@ -366,8 +298,8 @@ class UserProfileManager:
             是否需要更新
         """
         config = get_config()
-        interval_summaries = config.get("profile_mid_update_interval_summaries") if hasattr(config, 'get') else 5
-        interval_hours = config.get("profile_mid_update_interval_hours") if hasattr(config, 'get') else 24.0
+        interval_summaries = ProfileConfig.get_mid_update_interval_summaries(config)
+        interval_hours = ProfileConfig.get_mid_update_interval_hours(config)
 
         tracker = profile.get_update_tracker()
         return tracker.should_update_mid(interval_summaries, interval_hours)
@@ -382,7 +314,7 @@ class UserProfileManager:
             是否需要更新
         """
         config = get_config()
-        interval_hours = config.get("profile_long_update_interval_hours") if hasattr(config, 'get') else 168.0
+        interval_hours = ProfileConfig.get_long_update_interval_hours(config)
 
         tracker = profile.get_update_tracker()
         return tracker.should_update_long(interval_hours)

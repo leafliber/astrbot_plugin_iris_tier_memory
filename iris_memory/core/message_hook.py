@@ -35,9 +35,55 @@ async def handle_user_message(
         component_manager: 组件管理器实例
     """
     await _add_to_l1_buffer(event, component_manager)
-    await _update_user_profile(event, component_manager)
     await _queue_images_to_l1_buffer(event, component_manager)
     await _parse_images_if_enabled(event, component_manager)
+
+
+async def _update_profile_names(
+    component_manager: "ComponentManager",
+    group_id: str,
+    group_name: str,
+    user_id: str,
+    user_name: str
+) -> None:
+    """更新用户昵称和群聊名称（内部函数）
+    
+    当用户昵称或群聊名称发生变化时，更新画像中的名称字段。
+    用户昵称变化会记录到 historical_names。
+    
+    Args:
+        component_manager: 组件管理器实例
+        group_id: 群聊ID
+        group_name: 群聊名称
+        user_id: 用户ID
+        user_name: 用户昵称
+    """
+    from iris_memory.config import get_config
+    
+    config = get_config()
+    if not config.get("profile.enable"):
+        return
+    
+    profile_storage = component_manager.get_component("profile")
+    if not profile_storage or not profile_storage.is_available:
+        return
+    
+    try:
+        from iris_memory.profile import GroupProfileManager, UserProfileManager
+        
+        group_manager = GroupProfileManager(profile_storage)
+        user_manager = UserProfileManager(profile_storage)
+        
+        effective_group_id = group_id if config.get("isolation_config.enable_group_isolation") else "default"
+        
+        if group_name:
+            await group_manager.update_group_name(group_id, group_name)
+        
+        if user_name:
+            await user_manager.update_user_name(user_id, effective_group_id, user_name)
+        
+    except Exception as e:
+        logger.error(f"更新画像名称失败: {e}", exc_info=True)
 
 
 async def _add_to_l1_buffer(
@@ -68,6 +114,7 @@ async def _add_to_l1_buffer(
     group_id = adapter.get_group_id(event)
     user_id = adapter.get_user_id(event)
     user_name = adapter.get_user_name(event)
+    group_name = adapter.get_group_name(event)
     
     metadata = {}
     if user_name:
@@ -82,57 +129,10 @@ async def _add_to_l1_buffer(
     )
     
     logger.debug(f"已添加用户消息到群聊 {group_id} 的 L1 Buffer")
-
-
-async def _update_user_profile(
-    event: "AstrMessageEvent",
-    component_manager: "ComponentManager"
-) -> None:
-    """更新用户画像（内部函数）
     
-    在用户发送消息时更新画像简单字段。
-    
-    Args:
-        event: AstrBot 消息事件对象
-        component_manager: 组件管理器实例
-    """
-    from iris_memory.config import get_config
-    from iris_memory.platform import get_adapter
-    
-    config = get_config()
-    if not config.get("profile.enable"):
-        return
-    
-    # 2. 获取 ProfileStorage 组件
-    profile_storage = component_manager.get_component("profile")
-    if not profile_storage or not profile_storage.is_available:
-        logger.debug("画像系统组件不可用，跳过画像更新")
-        return
-    
-    # 3. 获取群聊ID和用户ID
-    adapter = get_adapter(event)
-    group_id = adapter.get_group_id(event)
-    user_id = adapter.get_user_id(event)
-    user_name = adapter.get_user_name(event)
-    
-    if not user_id:
-        logger.debug("无法获取用户ID，跳过画像更新")
-        return
-    
-    # 4. 根据群聊隔离配置决定 group_id
-    effective_group_id = group_id if config.get("isolation_config.enable_group_isolation") else "default"
-    
-    # 5. 更新用户画像简单字段
-    from iris_memory.profile import UserProfileManager
-    
-    user_manager = UserProfileManager(profile_storage)
-    await user_manager.update_simple_fields(
-        user_id=user_id,
-        group_id=effective_group_id,
-        user_name=user_name
+    await _update_profile_names(
+        component_manager, group_id, group_name, user_id, user_name
     )
-    
-    logger.debug(f"已更新用户画像: {user_id} (群聊: {effective_group_id})")
 
 
 async def update_l1_buffer(

@@ -180,6 +180,13 @@
         "default": true,
         "description": "启用画像系统"
       },
+      "analysis_provider": {
+        "type": "string",
+        "default": "",
+        "description": "画像分析模型 Provider",
+        "hint": "选择用于画像分析的模型，留空则使用默认 Provider",
+        "_special": "select_provider"
+      },
       "analysis_mode": {
         "type": "string",
         "default": "all",

@@ -5,7 +5,8 @@ Iris Tier Memory - 画像存储组件
 支持群聊隔离和人格隔离。
 """
 
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, Set, Any, List
+import asyncio
 
 from iris_memory.core import Component, get_logger
 from iris_memory.core.storage import KVStorage
@@ -22,6 +23,29 @@ if TYPE_CHECKING:
     pass
 
 logger = get_logger("profile")
+
+GROUP_PROFILE_WRITABLE_FIELDS: Set[str] = {
+    "group_name",
+    "interests",
+    "atmosphere_tags",
+    "long_term_tags",
+    "blacklist_topics",
+    "custom_fields",
+}
+
+USER_PROFILE_WRITABLE_FIELDS: Set[str] = {
+    "user_name",
+    "historical_names",
+    "personality_tags",
+    "interests",
+    "occupation",
+    "language_style",
+    "bot_relationship",
+    "important_dates",
+    "taboo_topics",
+    "important_events",
+    "custom_fields",
+}
 
 
 class ProfileStorage(Component):
@@ -218,7 +242,7 @@ class ProfileStorage(Component):
                 profile = GroupProfile(group_id=group_id)
             
             for key, value in updates.items():
-                if hasattr(profile, key):
+                if key in GROUP_PROFILE_WRITABLE_FIELDS:
                     setattr(profile, key, value)
             
             await self.save_group_profile(profile)
@@ -252,7 +276,7 @@ class ProfileStorage(Component):
                 profile = UserProfile(user_id=user_id)
             
             for key, value in updates.items():
-                if hasattr(profile, key):
+                if key in USER_PROFILE_WRITABLE_FIELDS:
                     setattr(profile, key, value)
             
             await self.save_user_profile(profile, group_id)
@@ -270,14 +294,21 @@ class ProfileStorage(Component):
         try:
             group_ids = await self._storage.get_kv_data(index_key, [])
             
+            if not group_ids:
+                return []
+            
+            tasks = [self.get_group_profile(group_id) for group_id in group_ids]
+            profiles = await asyncio.gather(*tasks, return_exceptions=True)
+            
             groups = []
-            for group_id in group_ids:
-                profile = await self.get_group_profile(group_id)
+            for group_id, profile in zip(group_ids, profiles):
+                if isinstance(profile, Exception):
+                    logger.warning(f"获取群聊画像失败: {group_id}, 错误: {profile}")
+                    continue
                 if profile:
                     groups.append({
                         "group_id": group_id,
-                        "group_name": profile.group_name or group_id,
-                        "member_count": len(profile.active_users) if profile.active_users else 0
+                        "group_name": profile.group_name or group_id
                     })
             
             return groups
@@ -293,9 +324,17 @@ class ProfileStorage(Component):
         try:
             user_ids = await self._storage.get_kv_data(index_key, [])
             
+            if not user_ids:
+                return []
+            
+            tasks = [self.get_user_profile(user_id, group_id) for user_id in user_ids]
+            profiles = await asyncio.gather(*tasks, return_exceptions=True)
+            
             users = []
-            for user_id in user_ids:
-                profile = await self.get_user_profile(user_id, group_id)
+            for user_id, profile in zip(user_ids, profiles):
+                if isinstance(profile, Exception):
+                    logger.warning(f"获取用户画像失败: {user_id}, 错误: {profile}")
+                    continue
                 if profile:
                     users.append({
                         "user_id": user_id,

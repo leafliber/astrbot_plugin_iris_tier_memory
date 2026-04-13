@@ -101,8 +101,6 @@ class ProfileCommandHandler(CommandHandler):
             lines.append(f"昵称: {profile.user_name}")
         if profile.historical_names:
             lines.append(f"曾用名: {', '.join(profile.historical_names)}")
-        if profile.current_emotional_state:
-            lines.append(f"情感状态: {profile.current_emotional_state}")
         if profile.personality_tags:
             lines.append(f"性格标签: {', '.join(profile.personality_tags)}")
         if profile.interests:
@@ -239,16 +237,10 @@ class ProfileCommandHandler(CommandHandler):
             
             if profile.group_name:
                 lines.append(f"群名称: {profile.group_name}")
-            if profile.current_topic:
-                lines.append(f"当前话题: {profile.current_topic}")
             if profile.interests:
                 lines.append(f"兴趣点: {', '.join(profile.interests)}")
             if profile.atmosphere_tags:
                 lines.append(f"氛围标签: {', '.join(profile.atmosphere_tags)}")
-            if profile.common_expressions:
-                lines.append(f"常用语: {', '.join(profile.common_expressions[:5])}")
-            if profile.active_users:
-                lines.append(f"活跃用户: {len(profile.active_users)} 人")
             if profile.long_term_tags:
                 lines.append(f"长期标签: {', '.join(profile.long_term_tags)}")
             if profile.blacklist_topics:

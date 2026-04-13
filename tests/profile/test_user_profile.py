@@ -50,26 +50,25 @@ class TestUserProfileManager:
         mock_storage.get_user_profile.assert_called_once_with("user_456", "group_123")
 
     @pytest.mark.asyncio
-    async def test_update_simple_fields(self, manager, mock_storage):
+    async def test_update_user_name(self, manager, mock_storage):
         existing_profile = UserProfile(user_id="user_456")
         mock_storage.get_user_profile.return_value = existing_profile
 
-        await manager.update_simple_fields(
+        await manager.update_user_name(
             user_id="user_456",
             group_id="group_123",
             user_name="小明"
         )
 
         assert existing_profile.user_name == "小明"
-        assert existing_profile.last_interaction_time is not None
         mock_storage.save_user_profile.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_update_simple_fields_with_name_change(self, manager, mock_storage):
+    async def test_update_user_name_with_name_change(self, manager, mock_storage):
         existing_profile = UserProfile(user_id="user_456", user_name="旧昵称")
         mock_storage.get_user_profile.return_value = existing_profile
 
-        await manager.update_simple_fields(
+        await manager.update_user_name(
             user_id="user_456",
             group_id="group_123",
             user_name="新昵称"
@@ -77,24 +76,6 @@ class TestUserProfileManager:
 
         assert existing_profile.user_name == "新昵称"
         assert "旧昵称" in existing_profile.historical_names
-        mock_storage.save_user_profile.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_update_short_term_fields(self, manager, mock_storage):
-        existing_profile = UserProfile(user_id="user_456")
-        mock_storage.get_user_profile.return_value = existing_profile
-
-        await manager.update_short_term_fields(
-            user_id="user_456",
-            group_id="group_123",
-            emotional_state="开心",
-            emotional_confidence=0.9
-        )
-
-        assert existing_profile.current_emotional_state == "开心"
-        meta = existing_profile.get_field_meta("current_emotional_state")
-        assert meta.confidence == 0.9
-        assert meta.source == "rule"
         mock_storage.save_user_profile.assert_called_once()
 
     @pytest.mark.asyncio

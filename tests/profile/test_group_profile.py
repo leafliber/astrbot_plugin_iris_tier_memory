@@ -50,19 +50,16 @@ class TestGroupProfileManager:
         mock_storage.get_group_profile.assert_called_once_with("group_123")
 
     @pytest.mark.asyncio
-    async def test_update_simple_fields(self, manager, mock_storage):
+    async def test_update_group_name(self, manager, mock_storage):
         existing_profile = GroupProfile(group_id="group_123")
         mock_storage.get_group_profile.return_value = existing_profile
 
-        await manager.update_simple_fields(
+        await manager.update_group_name(
             group_id="group_123",
-            current_topic="AI技术讨论",
-            active_users=["user1", "user2"]
+            group_name="新群名"
         )
 
-        assert existing_profile.current_topic == "AI技术讨论"
-        assert existing_profile.active_users == ["user1", "user2"]
-        assert existing_profile.last_interaction_time is not None
+        assert existing_profile.group_name == "新群名"
         mock_storage.save_group_profile.assert_called_once()
 
     @pytest.mark.asyncio
@@ -74,14 +71,12 @@ class TestGroupProfileManager:
             group_id="group_123",
             interests=["技术", "AI"],
             atmosphere_tags=["轻松", "技术范"],
-            common_expressions=["yyds", "绝了"],
             tier=UpdateTier.MID,
             confidence=0.7
         )
 
         assert existing_profile.interests == ["技术", "AI"]
         assert existing_profile.atmosphere_tags == ["轻松", "技术范"]
-        assert existing_profile.common_expressions == ["yyds", "绝了"]
 
         tracker = existing_profile.get_update_tracker()
         assert tracker.last_mid_update_time is not None
@@ -205,17 +200,4 @@ class TestGroupProfileManager:
         meta = existing_profile.get_field_meta("blacklist_topics")
         assert meta.confidence == 1.0
         assert meta.source == "manual"
-        mock_storage.save_group_profile.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_update_simple_fields_with_group_name(self, manager, mock_storage):
-        existing_profile = GroupProfile(group_id="group_123")
-        mock_storage.get_group_profile.return_value = existing_profile
-
-        await manager.update_simple_fields(
-            group_id="group_123",
-            group_name="新群名"
-        )
-
-        assert existing_profile.group_name == "新群名"
         mock_storage.save_group_profile.assert_called_once()

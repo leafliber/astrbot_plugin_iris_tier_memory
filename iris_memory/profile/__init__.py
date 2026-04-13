@@ -16,6 +16,7 @@ from .models import (
     dict_to_user_profile,
     merge_list_field,
     should_overwrite_field,
+    ProfileConfig,
 )
 from .storage import ProfileStorage
 from .group_profile import GroupProfileManager
@@ -34,6 +35,7 @@ __all__ = [
     "dict_to_user_profile",
     "merge_list_field",
     "should_overwrite_field",
+    "ProfileConfig",
     
     # 存储组件
     "ProfileStorage",
