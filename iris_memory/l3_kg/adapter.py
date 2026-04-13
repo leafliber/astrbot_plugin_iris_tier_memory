@@ -843,15 +843,9 @@ class L3KGAdapter(Component):
                 return 0
             
             self._conn.execute("""
-                MATCH ()-[r:Related]-(e:Entity)
-                WHERE e.group_id = $group_id
-                DELETE r
-            """, {"group_id": group_id})
-            
-            self._conn.execute("""
                 MATCH (e:Entity)
                 WHERE e.group_id = $group_id
-                DELETE e
+                DETACH DELETE e
             """, {"group_id": group_id})
             
             logger.info(f"已删除群聊 {group_id} 的 {node_count} 个节点及其关联边")
@@ -882,13 +876,8 @@ class L3KGAdapter(Component):
                 return 0
             
             self._conn.execute("""
-                MATCH ()-[r:Related]->()
-                DELETE r
-            """)
-            
-            self._conn.execute("""
                 MATCH (e:Entity)
-                DELETE e
+                DETACH DELETE e
             """)
             
             logger.info(f"已删除所有知识图谱节点，共 {node_count} 个")
@@ -937,27 +926,15 @@ class L3KGAdapter(Component):
             
             if group_id:
                 self._conn.execute("""
-                    MATCH ()-[r:Related]-(e:Entity)
-                    WHERE e.group_id = $group_id AND e.name = $user_id
-                    DELETE r
-                """, {"group_id": group_id, "user_id": user_id})
-                
-                self._conn.execute("""
                     MATCH (e:Entity)
                     WHERE e.group_id = $group_id AND e.name = $user_id
-                    DELETE e
+                    DETACH DELETE e
                 """, {"group_id": group_id, "user_id": user_id})
             else:
                 self._conn.execute("""
-                    MATCH ()-[r:Related]-(e:Entity)
-                    WHERE e.name = $user_id
-                    DELETE r
-                """, {"user_id": user_id})
-                
-                self._conn.execute("""
                     MATCH (e:Entity)
                     WHERE e.name = $user_id
-                    DELETE e
+                    DETACH DELETE e
                 """, {"user_id": user_id})
             
             logger.info(f"已删除用户 {user_id} 的 {node_count} 个知识图谱节点")
