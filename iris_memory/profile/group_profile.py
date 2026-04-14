@@ -61,10 +61,15 @@ class GroupProfileManager:
             group_id: 群聊ID
             group_name: 群聊名称
         """
+        if not group_name:
+            return
+
         profile = await self.get_or_create(group_id)
-        profile.group_name = group_name
-        await self._storage.save_group_profile(profile, increment_version=True)
-        logger.debug(f"更新群聊名称: {group_id} -> {group_name}")
+
+        if group_name != profile.group_name:
+            profile.group_name = group_name
+            await self._storage.save_group_profile(profile, increment_version=True)
+            logger.debug(f"更新群聊名称: {group_id} -> {group_name}")
 
     async def update_from_analysis(
         self,
