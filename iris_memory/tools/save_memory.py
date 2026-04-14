@@ -71,6 +71,9 @@ class SaveMemoryTool(FunctionTool[AstrAgentContext]):
             if not content:
                 return ToolExecResult(result="记忆内容不能为空")
             
+            from iris_memory.utils import sanitize_input
+            content = sanitize_input(content, source="tool:save_memory")
+            
             # 获取event对象
             event = context.context.event
             

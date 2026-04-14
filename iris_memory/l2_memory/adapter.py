@@ -532,6 +532,34 @@ class L2MemoryAdapter(Component):
             logger.error(f"删除记忆失败：{e}", exc_info=True)
             return False
     
+    async def update_metadata(self, memory_id: str, metadata: Dict[str, Any]) -> bool:
+        """更新记忆条目的元数据
+
+        Args:
+            memory_id: 记忆 ID
+            metadata: 新的元数据字典
+
+        Returns:
+            是否更新成功
+        """
+        if not self._is_available or not memory_id:
+            return False
+
+        try:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: self._collection.update(
+                    ids=[memory_id],
+                    metadatas=[metadata]
+                )
+            )
+            return True
+
+        except Exception as e:
+            logger.error(f"更新元数据失败：{e}", exc_info=True)
+            return False
+    
     async def evict_memories(self, memory_ids: List[str]) -> int:
         """淘汰记忆条目（用于定时任务）
         

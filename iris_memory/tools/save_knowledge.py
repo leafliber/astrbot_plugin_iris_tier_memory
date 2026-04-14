@@ -104,6 +104,16 @@ class SaveKnowledgeTool(FunctionTool[AstrAgentContext]):
             nodes = kwargs.get("nodes", [])
             edges = kwargs.get("edges", [])
             
+            from iris_memory.utils import sanitize_input
+            for node_data in nodes:
+                if "content" in node_data:
+                    node_data["content"] = sanitize_input(node_data["content"], source="tool:save_knowledge")
+                if "name" in node_data:
+                    node_data["name"] = sanitize_input(node_data["name"], source="tool:save_knowledge")
+            for edge_data in edges:
+                if "relation_type" in edge_data:
+                    edge_data["relation_type"] = sanitize_input(edge_data["relation_type"], source="tool:save_knowledge")
+            
             # 获取图谱适配器
             component_manager = get_component_manager()
             kg_adapter = component_manager.get_component("l3_kg")

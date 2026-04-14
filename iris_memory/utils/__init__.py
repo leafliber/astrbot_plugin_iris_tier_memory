@@ -13,6 +13,7 @@ from .forgetting import (
     calculate_forgetting_score,
     should_evict,
 )
+from .input_sanitizer import sanitize_input, is_injection_attempt
 
 __all__ = [
     # Token 计数
@@ -26,4 +27,8 @@ __all__ = [
     "calculate_isolation_degree",
     "calculate_forgetting_score",
     "should_evict",
+    
+    # 输入清理
+    "sanitize_input",
+    "is_injection_attempt",
 ]

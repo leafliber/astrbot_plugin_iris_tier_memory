@@ -84,7 +84,7 @@ class IsolationConfig:
 class ScheduledTasksConfig:
     """定时任务配置"""
     provider: str = ""
-    enable_forgetting: bool = True
+    enable_forgetting: bool = True       # 启用定时遗忘清洗任务
     enable_merging: bool = True
 
 
@@ -178,6 +178,20 @@ class HiddenConfig:
     image_parsing_max_size_kb: int = 4096              # 最大图片大小（KB）
     image_parsing_supported_formats: str = "jpg,jpeg,png,gif,webp"  # 支持的图片格式
     image_parsing_fallback_on_error: bool = True       # 解析失败时是否入队原始消息
+    image_phash_enable: bool = True                    # 启用 pHash 感知哈希去重
+    image_phash_threshold: int = 10                    # pHash 汉明距离阈值（越小越严格）
+    image_filter_enable: bool = True                   # 启用无效图过滤（纯色/过小）
+    image_filter_min_size: int = 16                    # 最小图片尺寸（像素）
+    image_filter_std_threshold: float = 5.0            # 纯色检测标准差阈值
+    
+    # 输入清理参数
+    input_sanitizer_enable: bool = True                # 启用 Prompt 注入过滤
+    input_sanitizer_max_length: int = 10000            # 输入最大长度
+    
+    # 遗忘确认参数
+    forgetting_llm_confirm_enable: bool = False        # 启用 LLM 最终兜底确认遗忘
+    forgetting_llm_confirm_provider: str = ""          # 确认使用的 Provider（空则使用默认）
+    forgetting_llm_confirm_threshold: float = 0.15     # 评分低于此值才触发 LLM 确认
 
 
 @dataclass

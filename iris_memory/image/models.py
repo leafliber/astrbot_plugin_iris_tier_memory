@@ -332,7 +332,6 @@ class MessageImages:
         current_images: 当前消息中的图片列表
         reply_images: 引用/回复消息中的图片列表
         is_llm_trigger: 是否触发LLM调用
-        contains_keywords: 是否包含关键词
         
     Examples:
         >>> images = MessageImages(message_id="msg_123")
@@ -345,7 +344,6 @@ class MessageImages:
     current_images: List[ImageInfo] = field(default_factory=list)
     reply_images: List[ImageInfo] = field(default_factory=list)
     is_llm_trigger: bool = False
-    contains_keywords: bool = False
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典格式
@@ -358,7 +356,6 @@ class MessageImages:
             "current_images": [img.to_dict() for img in self.current_images],
             "reply_images": [img.to_dict() for img in self.reply_images],
             "is_llm_trigger": self.is_llm_trigger,
-            "contains_keywords": self.contains_keywords,
         }
     
     @classmethod
@@ -385,7 +382,6 @@ class MessageImages:
             current_images=current_images,
             reply_images=reply_images,
             is_llm_trigger=data.get("is_llm_trigger", False),
-            contains_keywords=data.get("contains_keywords", False),
         )
     
     @property
@@ -427,7 +423,7 @@ class ImageQueueItem:
     存储在 L1 Buffer 图片队列中的图片元数据。
     
     Attributes:
-        image_hash: 图片 hash（URL hash 或文件内容 hash）
+        image_hash: 图片 hash（pHash 感知哈希或 URL MD5 hash）
         image_url: 图片 URL
         image_info: 图片完整信息
         message_id: 关联消息 ID

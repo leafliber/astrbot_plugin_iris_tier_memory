@@ -103,6 +103,9 @@ async def _add_to_l1_buffer(
         logger.debug("消息内容为空，跳过添加")
         return
     
+    from iris_memory.utils import sanitize_input
+    content = sanitize_input(content, source="user_message")
+    
     buffer = component_manager.get_component("l1_buffer")
     if not buffer or not buffer.is_available:
         logger.debug("L1 Buffer 组件不可用，跳过消息添加")
@@ -182,6 +185,8 @@ async def _queue_images_to_l1_buffer(
 ) -> None:
     """提取图片并入队到 L1 Buffer 图片队列（内部函数）
     
+    支持 pHash 感知哈希去重和无效图过滤。
+    
     Args:
         event: AstrBot 消息事件对象
         component_manager: 组件管理器实例
@@ -189,7 +194,7 @@ async def _queue_images_to_l1_buffer(
     from iris_memory.config import get_config
     from iris_memory.platform import get_adapter
     from iris_memory.image import ImageQueueItem, ImageParseStatus
-    import hashlib
+    from iris_memory.image.image_utils import compute_image_hash, is_similar_image, check_invalid_image
     
     config = get_config()
     if not config.get("image_parsing.enable"):
@@ -212,15 +217,37 @@ async def _queue_images_to_l1_buffer(
     raw_msg = adapter.get_raw_message(event)
     message_id = raw_msg.get("message_id", "")
     
+    use_phash = config.get("image_phash_enable")
+    phash_threshold = config.get("image_phash_threshold")
+    use_filter = config.get("image_filter_enable")
+    
+    existing_hashes: list[str] = []
+    if use_phash:
+        for queue_key, img_list in l1_buffer._image_queues.items():
+            for img in img_list:
+                if img.image_hash.startswith("ph:"):
+                    existing_hashes.append(img.image_hash)
+    
+    queued_count = 0
     for image_info in images:
-        image_hash = ""
-        if image_info.url:
-            image_hash = hashlib.md5(image_info.url.encode()).hexdigest()
-        elif image_info.file_path:
-            image_hash = hashlib.md5(image_info.file_path.encode()).hexdigest()
+        image_hash = await compute_image_hash(
+            url=image_info.url,
+            use_phash=use_phash
+        )
         
         if not image_hash:
             continue
+        
+        if use_phash and image_hash.startswith("ph:"):
+            is_dup = False
+            for existing in existing_hashes:
+                if is_similar_image(image_hash, existing, threshold=phash_threshold):
+                    is_dup = True
+                    logger.debug(f"pHash 去重：跳过相似图片 {image_hash[:16]}...")
+                    break
+            if is_dup:
+                continue
+            existing_hashes.append(image_hash)
         
         queue_item = ImageQueueItem(
             image_hash=image_hash,
@@ -233,8 +260,10 @@ async def _queue_images_to_l1_buffer(
         )
         
         l1_buffer.add_image(group_id, queue_item)
+        queued_count += 1
     
-    logger.debug(f"已入队 {len(images)} 张图片到 L1 Buffer 图片队列")
+    if queued_count > 0:
+        logger.debug(f"已入队 {queued_count} 张图片到 L1 Buffer 图片队列")
 
 
 async def _parse_images_if_enabled(

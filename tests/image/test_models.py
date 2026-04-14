@@ -235,8 +235,7 @@ class TestMessageImages:
         """测试序列化和反序列化"""
         images = MessageImages(
             message_id="msg_123",
-            is_llm_trigger=True,
-            contains_keywords=True
+            is_llm_trigger=True
         )
         
         img1 = ImageInfo(url="https://example.com/1.jpg")
@@ -247,5 +246,4 @@ class TestMessageImages:
         
         assert restored.message_id == images.message_id
         assert restored.is_llm_trigger == images.is_llm_trigger
-        assert restored.contains_keywords == images.contains_keywords
         assert len(restored.current_images) == 1

@@ -16,6 +16,14 @@ from .models import (
 from .quota_manager import ImageQuotaManager
 from .cache_manager import ImageCacheManager
 from .parser import ImageParser
+from .image_utils import (
+    compute_phash,
+    hamming_distance,
+    is_similar_image,
+    check_invalid_image,
+    compute_url_hash,
+    compute_image_hash,
+)
 
 __all__ = [
     "ImageInfo",
@@ -28,4 +36,10 @@ __all__ = [
     "ImageQuotaManager",
     "ImageCacheManager",
     "ImageParser",
+    "compute_phash",
+    "hamming_distance",
+    "is_similar_image",
+    "check_invalid_image",
+    "compute_url_hash",
+    "compute_image_hash",
 ]

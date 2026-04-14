@@ -63,6 +63,9 @@ class ReadMemoryTool(FunctionTool[AstrAgentContext]):
             if not query:
                 return ToolExecResult(result="查询内容不能为空")
             
+            from iris_memory.utils import sanitize_input
+            query = sanitize_input(query, source="tool:read_memory")
+            
             # 获取event对象
             event = context.context.event
             

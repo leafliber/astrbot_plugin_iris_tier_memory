@@ -70,6 +70,10 @@ class CorrectMemoryTool(FunctionTool[AstrAgentContext]):
                     result="参数不完整：需要提供 memory_id、correction 和 reason"
                 )
             
+            from iris_memory.utils import sanitize_input
+            correction = sanitize_input(correction, source="tool:correct_memory")
+            reason = sanitize_input(reason, source="tool:correct_memory")
+            
             # 获取event对象
             event = context.context.event
             

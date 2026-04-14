@@ -219,11 +219,12 @@ def should_evict(
 ) -> bool:
     """判断记忆是否应该被淘汰
     
-    综合考虑遗忘评分和保留期，判断记忆是否应该被淘汰。
+    综合考虑遗忘评分、保留期和低置信度标记，判断记忆是否应该被淘汰。
     
     淘汰条件：
     1. 遗忘评分低于阈值（默认 0.3）
     2. 距上次访问超过保留期（默认 30 天）
+    3. 被标记为低置信度的记忆，阈值降低 30% 以加速淘汰
     
     Args:
         entry: 记忆条目
@@ -249,6 +250,10 @@ def should_evict(
     """
     config = get_config()
     threshold = config.get("forgetting_threshold")
+    
+    # 低置信度标记的记忆，阈值提高 30%（更容易淘汰）
+    if entry.metadata.get("low_confidence"):
+        threshold *= 1.3
     
     # 计算遗忘评分
     score = calculate_forgetting_score(entry)
