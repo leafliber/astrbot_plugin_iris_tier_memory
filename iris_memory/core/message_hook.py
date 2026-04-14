@@ -17,6 +17,19 @@ if TYPE_CHECKING:
 
 logger = get_logger("message_hook")
 
+_name_cache: dict = {}
+_NAME_CACHE_MAX_SIZE = 1000
+
+
+def _get_cached_name(key: str) -> str | None:
+    return _name_cache.get(key)
+
+
+def _set_cached_name(key: str, name: str) -> None:
+    if len(_name_cache) >= _NAME_CACHE_MAX_SIZE:
+        _name_cache.clear()
+    _name_cache[key] = name
+
 
 async def handle_user_message(
     event: "AstrMessageEvent",
@@ -50,6 +63,7 @@ async def _update_profile_names(
     
     当用户昵称或群聊名称发生变化时，更新画像中的名称字段。
     用户昵称变化会记录到 historical_names。
+    使用内存缓存避免重复数据库操作。
     
     Args:
         component_manager: 组件管理器实例
@@ -68,19 +82,29 @@ async def _update_profile_names(
     if not profile_storage or not profile_storage.is_available:
         return
     
+    group_key = f"group:{group_id}"
+    effective_group_id = group_id if config.get("isolation_config.enable_group_isolation") else "default"
+    user_key = f"user:{effective_group_id}:{user_id}"
+    
+    group_name_changed = group_name and _get_cached_name(group_key) != group_name
+    user_name_changed = user_name and _get_cached_name(user_key) != user_name
+    
+    if not group_name_changed and not user_name_changed:
+        return
+    
     try:
         from iris_memory.profile import GroupProfileManager, UserProfileManager
         
         group_manager = GroupProfileManager(profile_storage)
         user_manager = UserProfileManager(profile_storage)
         
-        effective_group_id = group_id if config.get("isolation_config.enable_group_isolation") else "default"
-        
-        if group_name:
+        if group_name_changed:
             await group_manager.update_group_name(group_id, group_name)
+            _set_cached_name(group_key, group_name)
         
-        if user_name:
+        if user_name_changed:
             await user_manager.update_user_name(user_id, effective_group_id, user_name)
+            _set_cached_name(user_key, user_name)
         
     except Exception as e:
         logger.error(f"更新画像名称失败: {e}", exc_info=True)
