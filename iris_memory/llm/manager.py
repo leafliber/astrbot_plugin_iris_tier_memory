@@ -124,11 +124,17 @@ class LLMManager(Component):
                 f"LLM 调用开始：module={module}, provider={actual_provider_id or 'default'}"
             )
             
-            llm_resp: "LLMResponse" = await self._context.llm_generate(
-                chat_provider_id=actual_provider_id,
-                prompt=prompt,
-                contexts=contexts or [],
-            )
+            if actual_provider_id:
+                llm_resp: "LLMResponse" = await self._context.llm_generate(
+                    chat_provider_id=actual_provider_id,
+                    prompt=prompt,
+                    contexts=contexts or [],
+                )
+            else:
+                llm_resp: "LLMResponse" = await self._context.llm_generate(
+                    prompt=prompt,
+                    contexts=contexts or [],
+                )
             
             response_text = llm_resp.completion_text or ""
             

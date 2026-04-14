@@ -61,6 +61,7 @@ class ImageParsingConfig:
 class ProfileConfig:
     """画像系统配置"""
     enable: bool = True
+    analysis_provider: str = ""
     analysis_mode: Literal["all", "related"] = "all"
     enable_auto_injection: bool = True
 
