@@ -586,7 +586,7 @@ class L1Buffer(Component):
 
             analyzer = ProfileAnalyzer(llm_manager)
             group_profile_obj = await group_manager.get_or_create(group_id)
-            from .models import profile_to_dict
+            from iris_memory.profile.models import profile_to_dict
             current_profile_dict = profile_to_dict(group_profile_obj)
 
             msg_texts = [msg.content for msg in messages if msg.content]
@@ -633,7 +633,7 @@ class L1Buffer(Component):
 
             analyzer = ProfileAnalyzer(llm_manager)
             group_profile_obj = await group_manager.get_or_create(group_id)
-            from .models import profile_to_dict
+            from iris_memory.profile.models import profile_to_dict
             current_profile_dict = profile_to_dict(group_profile_obj)
 
             msg_texts = [msg.content for msg in messages if msg.content]
