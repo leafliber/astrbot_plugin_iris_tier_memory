@@ -237,3 +237,71 @@ class TestL2MemoryAdapter:
         result = await adapter.delete_entries([])
         
         assert result == False
+    
+    @pytest.mark.asyncio
+    async def test_delete_collection(self):
+        """测试删除 collection"""
+        adapter = L2MemoryAdapter()
+        adapter._client = Mock()
+        adapter._collection = Mock()
+        adapter._collection.name = "memory_default"
+        
+        result = await adapter.delete_collection()
+        
+        assert result == True
+        assert adapter._collection is None
+    
+    @pytest.mark.asyncio
+    async def test_delete_collection_no_client(self):
+        """测试无客户端时删除 collection"""
+        adapter = L2MemoryAdapter()
+        
+        result = await adapter.delete_collection()
+        
+        assert result == False
+    
+    @pytest.mark.asyncio
+    async def test_migrate_on_model_change_empty(self):
+        """测试空集合迁移"""
+        adapter = L2MemoryAdapter()
+        adapter._collection = Mock()
+        adapter._collection.count.return_value = 0
+        adapter._collection.metadata = {"hnsw:space": "cosine"}
+        
+        result = await adapter._migrate_on_model_change(
+            "BAAI/bge-small-zh-v1.5", "memory_default"
+        )
+        
+        assert result == True
+    
+    @pytest.mark.asyncio
+    async def test_migrate_on_model_change_with_data(self):
+        """测试有数据的集合迁移"""
+        adapter = L2MemoryAdapter()
+        adapter._client = Mock()
+        adapter._collection = Mock()
+        adapter._collection.count.return_value = 2
+        adapter._collection.name = "memory_default"
+        adapter._collection.metadata = {"hnsw:space": "cosine"}
+        adapter._embedding_func = Mock()
+        adapter._is_available = True
+        adapter._persist_dir = Path("/tmp/test_migration")
+        
+        mock_get_result = {
+            "ids": ["mem_001", "mem_002"],
+            "documents": ["记忆1", "记忆2"],
+            "metadatas": [{"group_id": "g1"}, {"group_id": "g2"}],
+        }
+        adapter._collection.get.return_value = mock_get_result
+        
+        with patch("iris_memory.l2_memory.adapter._ensure_chromadb"), \
+             patch("iris_memory.l2_memory.io.get_config") as mock_io_config:
+            mock_io_config_obj = Mock()
+            mock_io_config_obj.data_dir = Path("/tmp/test_migration")
+            mock_io_config.return_value = mock_io_config_obj
+            
+            result = await adapter._migrate_on_model_change(
+                "BAAI/bge-small-zh-v1.5", "memory_default"
+            )
+            
+            assert result == True

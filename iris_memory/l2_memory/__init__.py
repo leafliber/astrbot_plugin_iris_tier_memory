@@ -5,7 +5,7 @@ Iris Tier Memory - L2 记忆库模块
 """
 
 from .models import MemoryEntry, MemorySearchResult
-from .adapter import L2MemoryAdapter
+from .adapter import L2MemoryAdapter, SUPPORTED_EMBEDDING_MODELS
 from .retriever import MemoryRetriever
 from .fallback import FallbackRetriever, check_chromadb_available, create_fallback_handler
 from .io import (
@@ -25,6 +25,7 @@ __all__ = [
     
     # 核心组件
     "L2MemoryAdapter",
+    "SUPPORTED_EMBEDDING_MODELS",
     "MemoryRetriever",
     
     # 降级处理

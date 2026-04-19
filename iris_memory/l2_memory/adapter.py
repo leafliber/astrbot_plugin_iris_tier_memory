@@ -47,6 +47,78 @@ def _ensure_chromadb():
             raise
 
 
+SUPPORTED_EMBEDDING_MODELS = {
+    "BAAI/bge-small-zh-v1.5": {
+        "dimensions": 512,
+        "size_mb": 96,
+        "description": "BGE v1.5 中文小模型（默认推荐）",
+        "language": "zh",
+    },
+    "moka-ai/m3e-small": {
+        "dimensions": 512,
+        "size_mb": 96,
+        "description": "M3E 中文小模型，s2s 能力强",
+        "language": "zh",
+    },
+    "moka-ai/m3e-base": {
+        "dimensions": 768,
+        "size_mb": 409,
+        "description": "M3E 中英双语，s2p 检索能力强",
+        "language": "zh+en",
+    },
+    "BAAI/bge-base-zh-v1.5": {
+        "dimensions": 768,
+        "size_mb": 409,
+        "description": "BGE v1.5 中文 base 模型，精度更高",
+        "language": "zh",
+    },
+    "shibing624/text2vec-base-chinese": {
+        "dimensions": 768,
+        "size_mb": 409,
+        "description": "text2vec 中文模型，语义匹配强",
+        "language": "zh",
+    },
+    "all-MiniLM-L6-v2": {
+        "dimensions": 384,
+        "size_mb": 80,
+        "description": "英文默认模型，中文效果差",
+        "language": "en",
+    },
+}
+
+
+def _create_embedding_function(model_name: str):
+    """根据模型名创建嵌入函数
+    
+    Args:
+        model_name: HuggingFace 模型名或 'all-MiniLM-L6-v2'
+    
+    Returns:
+        ChromaDB 嵌入函数
+    """
+    if model_name == "all-MiniLM-L6-v2":
+        return _embedding_functions.DefaultEmbeddingFunction()
+    
+    model_info = SUPPORTED_EMBEDDING_MODELS.get(model_name)
+    if model_info:
+        logger.info(
+            f"加载嵌入模型：{model_name} "
+            f"(维度={model_info['dimensions']}, "
+            f"大小≈{model_info['size_mb']}MB, "
+            f"{model_info['description']})"
+        )
+    else:
+        logger.info(f"加载自定义嵌入模型：{model_name}")
+    
+    try:
+        return _embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name=model_name
+        )
+    except Exception as e:
+        logger.warning(f"加载嵌入模型 {model_name} 失败：{e}，回退到默认模型")
+        return _embedding_functions.DefaultEmbeddingFunction()
+
+
 class L2MemoryAdapter(Component):
     """L2 记忆库适配器
     
@@ -121,8 +193,12 @@ class L2MemoryAdapter(Component):
                 self._create_client
             )
             
-            # 创建嵌入函数（使用默认的 all-MiniLM-L6-v2）
-            self._embedding_func = _embedding_functions.DefaultEmbeddingFunction()
+            # 创建嵌入函数（支持配置中文模型）
+            embedding_model = config.get("l2_memory.embedding_model", "BAAI/bge-small-zh-v1.5")
+            self._embedding_func = await loop.run_in_executor(
+                None,
+                lambda: _create_embedding_function(embedding_model)
+            )
             
             # 获取或创建 collection（新集合使用余弦距离）
             collection_name = f"memory_{self._persona_id}"
@@ -137,10 +213,35 @@ class L2MemoryAdapter(Component):
             # 检测实际距离空间（已有集合可能使用 L2）
             self._distance_space = self._collection.metadata.get("hnsw:space", "l2")
             
+            # 检测嵌入模型是否变更，自动迁移
+            stored_model = self._collection.metadata.get("embedding_model", "")
+            needs_migration = False
+            
+            if stored_model and stored_model != embedding_model:
+                needs_migration = True
+                logger.warning(
+                    f"嵌入模型已变更：{stored_model} -> {embedding_model}，"
+                    f"开始自动迁移..."
+                )
+            elif not stored_model and self._collection.count() > 0:
+                needs_migration = True
+                logger.info(
+                    f"已有集合未记录嵌入模型（旧版本数据），"
+                    f"当前使用 {embedding_model}，开始自动迁移..."
+                )
+            
+            if needs_migration:
+                migration_ok = await self._migrate_on_model_change(
+                    embedding_model, collection_name
+                )
+                if not migration_ok:
+                    logger.warning("自动迁移失败，将使用新模型继续，旧数据检索精度可能下降")
+            
             self._is_available = True
             logger.info(
                 f"L2 记忆库初始化成功，collection: {collection_name}，"
                 f"距离空间: {self._distance_space}，"
+                f"嵌入模型: {embedding_model}，"
                 f"当前条目数: {self._collection.count()}"
             )
             
@@ -150,6 +251,137 @@ class L2MemoryAdapter(Component):
             self._is_available = False
             self._init_error = error_msg
     
+    async def _migrate_on_model_change(
+        self,
+        new_model: str,
+        collection_name: str
+    ) -> bool:
+        """嵌入模型变更时自动迁移数据
+        
+        流程：
+        1. 导出所有现有记忆到临时文件
+        2. 删除旧 collection
+        3. 用新嵌入模型创建新 collection
+        4. 从临时文件重新导入记忆（新模型会重新计算向量）
+        5. 清理临时文件
+        
+        Args:
+            new_model: 新嵌入模型名
+            collection_name: collection 名称
+        
+        Returns:
+            迁移是否成功
+        """
+        from .io import MemoryExporter, MemoryImporter
+        
+        old_count = self._collection.count()
+        if old_count == 0:
+            logger.info("集合为空，无需迁移数据")
+            try:
+                self._collection.modify(
+                    metadata={
+                        **self._collection.metadata,
+                        "embedding_model": new_model
+                    }
+                )
+            except Exception:
+                pass
+            return True
+        
+        logger.info(f"开始迁移 {old_count} 条记忆（模型变更）")
+        
+        backup_path = self._persist_dir / f"_migration_backup_{collection_name}.json"
+        
+        try:
+            # 1. 导出所有记忆
+            exporter = MemoryExporter(self)
+            export_stats = await exporter.export_all(backup_path)
+            logger.info(
+                f"迁移步骤 1/4：导出完成，"
+                f"共 {export_stats.total_count} 条，导出 {export_stats.exported_count} 条"
+            )
+            
+            if export_stats.exported_count == 0:
+                logger.warning("导出 0 条记忆，跳过迁移")
+                backup_path.unlink(missing_ok=True)
+                return False
+            
+            # 2. 删除旧 collection
+            deleted = await self.delete_collection()
+            if not deleted:
+                logger.error("迁移步骤 2/4：删除旧 collection 失败")
+                return False
+            logger.info("迁移步骤 2/4：已删除旧 collection")
+            
+            # 3. 创建新 collection（使用新嵌入模型）
+            loop = asyncio.get_event_loop()
+            self._collection = await loop.run_in_executor(
+                None,
+                lambda: self._client.get_or_create_collection(
+                    name=collection_name,
+                    metadata={
+                        "hnsw:space": "cosine",
+                        "persona_id": self._persona_id,
+                        "embedding_model": new_model,
+                    }
+                )
+            )
+            self._distance_space = "cosine"
+            logger.info("迁移步骤 3/4：已创建新 collection")
+            
+            # 4. 重新导入记忆（新嵌入模型会自动重新计算向量）
+            importer = MemoryImporter(self)
+            import_stats = await importer.import_from_file(
+                backup_path,
+                skip_duplicates=False
+            )
+            logger.info(
+                f"迁移步骤 4/4：导入完成，"
+                f"共 {import_stats.total_count} 条，导入 {import_stats.imported_count} 条，"
+                f"跳过 {import_stats.skipped_count} 条，错误 {import_stats.error_count} 条"
+            )
+            
+            # 5. 清理临时文件
+            backup_path.unlink(missing_ok=True)
+            
+            success = import_stats.imported_count > 0
+            if success:
+                logger.info(
+                    f"迁移成功：{export_stats.exported_count} -> {import_stats.imported_count} 条"
+                )
+            else:
+                logger.error("迁移后导入 0 条记忆，迁移失败")
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"迁移过程异常：{e}", exc_info=True)
+            
+            # 尝试恢复：如果备份文件存在且 collection 已被删除，重新创建并导入
+            if self._collection is None and backup_path.exists():
+                try:
+                    loop = asyncio.get_event_loop()
+                    self._collection = await loop.run_in_executor(
+                        None,
+                        lambda: self._client.get_or_create_collection(
+                            name=collection_name,
+                            metadata={
+                                "hnsw:space": "cosine",
+                                "persona_id": self._persona_id,
+                                "embedding_model": new_model,
+                            }
+                        )
+                    )
+                    importer = MemoryImporter(self)
+                    await importer.import_from_file(backup_path, skip_duplicates=False)
+                    logger.info("已从备份恢复数据")
+                except Exception as restore_err:
+                    logger.error(f"恢复数据失败：{restore_err}", exc_info=True)
+            
+            # 清理临时文件
+            backup_path.unlink(missing_ok=True)
+            return False
+
     def _create_client(self):
         """创建 ChromaDB 客户端（同步方法）
         
@@ -560,6 +792,32 @@ class L2MemoryAdapter(Component):
             
         except Exception as e:
             logger.error(f"删除记忆失败：{e}", exc_info=True)
+            return False
+    
+    async def delete_collection(self) -> bool:
+        """删除当前 collection
+        
+        用于重建记忆库时清除旧数据。
+        
+        Returns:
+            是否删除成功
+        """
+        if not self._client or not self._collection:
+            return False
+        
+        try:
+            collection_name = self._collection.name
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: self._client.delete_collection(name=collection_name)
+            )
+            self._collection = None
+            logger.info(f"已删除 collection: {collection_name}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"删除 collection 失败：{e}", exc_info=True)
             return False
     
     async def update_metadata(self, memory_id: str, metadata: Dict[str, Any]) -> bool:

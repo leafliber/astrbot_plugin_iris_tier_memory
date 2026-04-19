@@ -29,6 +29,7 @@ class L2MemoryConfig:
     enable: bool = True
     summary_provider: str = ""
     enable_graph_enhancement: bool = False
+    embedding_model: str = "BAAI/bge-small-zh-v1.5"
     top_k: int = 10
     max_entries: int = 10000
     timeout_ms: int = 2000

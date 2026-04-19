@@ -66,6 +66,20 @@
         "description": "启用图增强检索",
         "hint": "利用 L3 知识图谱扩展 L2 记忆检索结果，发现更多关联信息"
       },
+      "embedding_model": {
+        "type": "string",
+        "default": "BAAI/bge-small-zh-v1.5",
+        "description": "嵌入模型",
+        "hint": "向量检索使用的嵌入模型，更换后需重建记忆库。推荐 bge-small-zh-v1.5（96MB）",
+        "options": [
+          "BAAI/bge-small-zh-v1.5",
+          "moka-ai/m3e-small",
+          "moka-ai/m3e-base",
+          "BAAI/bge-base-zh-v1.5",
+          "shibing624/text2vec-base-chinese",
+          "all-MiniLM-L6-v2"
+        ]
+      },
       "top_k": {
         "type": "int",
         "default": 10,
