@@ -116,16 +116,27 @@ class LLMManager(Component):
         
         actual_provider_id = await self._resolve_provider(module, provider_id)
         
+        if not actual_provider_id:
+            logger.warning(
+                f"LLM 调用跳过：module={module}, 未配置 Provider 且无法获取默认 Provider。"
+                f"请在插件配置中设置 {module} 的 Provider，或在 AstrBot 中配置默认 Provider。"
+            )
+            raise RuntimeError(
+                f"未配置 Provider：module={module}。"
+                f"请在插件配置中设置相应的 Provider（如 profile.analysis_provider），"
+                f"或在 AstrBot 中配置默认 Provider。"
+            )
+        
         start_time = time.time()
         call_id = str(uuid.uuid4())
         
         try:
             logger.debug(
-                f"LLM 调用开始：module={module}, provider={actual_provider_id or 'default'}"
+                f"LLM 调用开始：module={module}, provider={actual_provider_id}"
             )
             
             llm_resp: "LLMResponse" = await self._context.llm_generate(
-                chat_provider_id=actual_provider_id or "",
+                chat_provider_id=actual_provider_id,
                 prompt=prompt,
                 contexts=contexts or [],
             )
@@ -197,14 +208,14 @@ class LLMManager(Component):
     ) -> Optional[str]:
         """解析要使用的 Provider ID
         
-        优先级：参数 > 模块配置 > 默认（None，由 AstrBot 处理）
+        优先级：参数 > 模块配置 > AstrBot 默认 Provider
         
         Args:
             module: 模块名
             provider_id: 参数传入的 provider_id
         
         Returns:
-            实际使用的 Provider ID，None 表示使用 AstrBot 默认
+            实际使用的 Provider ID，None 表示无法获取
         """
         if provider_id:
             return provider_id
@@ -226,6 +237,41 @@ class LLMManager(Component):
             configured_provider = config.get(config_key)
             if configured_provider:
                 return configured_provider
+        
+        default_provider = self._get_default_provider()
+        if default_provider:
+            return default_provider
+        
+        return None
+    
+    def _get_default_provider(self) -> Optional[str]:
+        """获取 AstrBot 默认 Provider ID
+        
+        Returns:
+            默认 Provider ID，无法获取时返回 None
+        """
+        try:
+            if hasattr(self._context, 'provider_manager'):
+                provider_manager = self._context.provider_manager
+                if hasattr(provider_manager, 'get_default_provider'):
+                    default_provider = provider_manager.get_default_provider()
+                    if default_provider and hasattr(default_provider, 'id'):
+                        return default_provider.id
+                if hasattr(provider_manager, 'providers'):
+                    providers = provider_manager.providers
+                    if providers:
+                        first_provider = providers[0]
+                        if hasattr(first_provider, 'id'):
+                            return first_provider.id
+            
+            if hasattr(self._context, 'providers'):
+                providers = self._context.providers
+                if providers:
+                    first_provider = providers[0]
+                    if hasattr(first_provider, 'id'):
+                        return first_provider.id
+        except Exception as e:
+            logger.debug(f"获取默认 Provider 失败: {e}")
         
         return None
     
