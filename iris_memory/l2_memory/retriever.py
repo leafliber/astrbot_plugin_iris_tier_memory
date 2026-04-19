@@ -108,6 +108,17 @@ class MemoryRetriever:
         # 执行检索
         results = await adapter.retrieve(query, group_id, top_k)
         
+        # 相似度阈值过滤
+        relevance_threshold = config.get("l2_memory.relevance_threshold", 0.3)
+        if relevance_threshold > 0:
+            filtered = [r for r in results if r.score >= relevance_threshold]
+            if len(filtered) < len(results):
+                logger.debug(
+                    f"相似度阈值过滤：{len(results)} -> {len(filtered)} 条 "
+                    f"(阈值={relevance_threshold})"
+                )
+            results = filtered
+        
         logger.debug(f"检索到 {len(results)} 条记忆")
         return results
     

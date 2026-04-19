@@ -230,6 +230,7 @@ class LLMManager(Component):
             "enhancement_rerank": "enhancement.rerank_provider",
             "image_parsing": "image_parsing.provider",
             "profile_analysis": "profile.analysis_provider",
+            "l2_query_rewrite": "l2_query_rewrite_provider",
         }
         
         config_key = module_config_map.get(module)

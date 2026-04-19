@@ -32,6 +32,7 @@ class L2MemoryConfig:
     top_k: int = 10
     max_entries: int = 10000
     timeout_ms: int = 2000
+    relevance_threshold: float = 0.3
 
 
 @dataclass
@@ -193,6 +194,11 @@ class HiddenConfig:
     forgetting_llm_confirm_enable: bool = False        # 启用 LLM 最终兜底确认遗忘
     forgetting_llm_confirm_provider: str = ""          # 确认使用的 Provider（空则使用默认）
     forgetting_llm_confirm_threshold: float = 0.15     # 评分低于此值才触发 LLM 确认
+    
+    # L2 查询改写参数
+    l2_query_rewrite_enable: bool = True               # 启用 L2 检索查询改写
+    l2_query_rewrite_provider: str = ""                # 查询改写使用的 Provider（空则使用默认）
+    l2_query_rewrite_timeout_ms: int = 3000            # 查询改写超时（毫秒）
 
 
 @dataclass

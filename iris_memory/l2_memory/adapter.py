@@ -79,7 +79,8 @@ class L2MemoryAdapter(Component):
         self._embedding_func = None
         self._persist_dir: Optional[Path] = None
         self._persona_id = persona_id
-        self._similarity_threshold = 0.95  # 去重相似度阈值
+        self._similarity_threshold = 0.95
+        self._distance_space: str = "l2"
     
     @property
     def name(self) -> str:
@@ -123,19 +124,23 @@ class L2MemoryAdapter(Component):
             # 创建嵌入函数（使用默认的 all-MiniLM-L6-v2）
             self._embedding_func = _embedding_functions.DefaultEmbeddingFunction()
             
-            # 获取或创建 collection
+            # 获取或创建 collection（新集合使用余弦距离）
             collection_name = f"memory_{self._persona_id}"
             self._collection = await loop.run_in_executor(
                 None,
                 lambda: self._client.get_or_create_collection(
                     name=collection_name,
-                    metadata={"persona_id": self._persona_id}
+                    metadata={"hnsw:space": "cosine", "persona_id": self._persona_id}
                 )
             )
+            
+            # 检测实际距离空间（已有集合可能使用 L2）
+            self._distance_space = self._collection.metadata.get("hnsw:space", "l2")
             
             self._is_available = True
             logger.info(
                 f"L2 记忆库初始化成功，collection: {collection_name}，"
+                f"距离空间: {self._distance_space}，"
                 f"当前条目数: {self._collection.count()}"
             )
             
@@ -261,9 +266,11 @@ class L2MemoryAdapter(Component):
             # 检查距离
             if results["distances"] and results["distances"][0]:
                 distance = results["distances"][0][0]
-                # ChromaDB 使用距离而非相似度，距离越小越相似
-                # 假设距离 < 0.1 表示相似度 > 0.95
-                if distance < (1 - self._similarity_threshold):
+                if self._distance_space == "cosine":
+                    is_duplicate = distance < (1 - self._similarity_threshold)
+                else:
+                    is_duplicate = distance < 2 * (1 - self._similarity_threshold)
+                if is_duplicate:
                     return results["ids"][0][0]
             
             return None
@@ -370,9 +377,12 @@ class L2MemoryAdapter(Component):
                     embedding=results["embeddings"][0][i] if results.get("embeddings") else None
                 )
                 
-                # 计算相似度分数（距离越小分数越高）
+                # 计算相似度分数
                 distance = results["distances"][0][i] if results["distances"] else 0.0
-                score = max(0.0, 1.0 - distance)
+                if self._distance_space == "cosine":
+                    score = max(0.0, 1.0 - distance)
+                else:
+                    score = max(0.0, 1.0 - distance / 2)
                 
                 search_results.append(MemorySearchResult(
                     entry=entry,
@@ -381,6 +391,26 @@ class L2MemoryAdapter(Component):
                 ))
         
         return search_results
+    
+    async def search(
+        self,
+        query: str,
+        group_id: Optional[str] = None,
+        top_k: int = 10
+    ) -> List[MemorySearchResult]:
+        """检索记忆（search 别名）
+        
+        与 retrieve 方法功能一致，提供兼容性别名。
+        
+        Args:
+            query: 查询文本
+            group_id: 群聊 ID（可选，用于隔离检索）
+            top_k: 返回数量
+        
+        Returns:
+            检索结果列表
+        """
+        return await self.retrieve(query, group_id, top_k)
     
     # ========================================================================
     # 访问更新

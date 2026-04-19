@@ -38,8 +38,11 @@ class TokenBudgetController:
         Args:
             max_tokens: 最大 Token 预算，留空从配置读取
         """
-        config = get_config()
-        self.max_tokens = max_tokens or config.get("token_budget_max_tokens", 2000)
+        if max_tokens is not None:
+            self.max_tokens = max_tokens
+        else:
+            config = get_config()
+            self.max_tokens = config.get("token_budget_max_tokens", 2000)
         
         # 可选：尝试加载 tiktoken（真实 tokenizer）
         self._tokenizer = None

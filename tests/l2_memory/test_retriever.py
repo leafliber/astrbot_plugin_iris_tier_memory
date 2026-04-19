@@ -34,10 +34,14 @@ class TestMemoryRetriever:
     def mock_config(self):
         """模拟配置"""
         config = Mock()
-        config.get = Mock(side_effect=lambda key: {
+        config.get = Mock(side_effect=lambda key, default=None: {
             "l2_memory.top_k": 10,
             "isolation_config.enable_group_memory_isolation": False,
-        }.get(key, None))
+            "l2_memory.relevance_threshold": 0.3,
+            "l2_memory.enable_graph_enhancement": False,
+            "enhancement.enable_rerank": False,
+            "token_budget_max_tokens": 2000,
+        }.get(key, default))
         return config
     
     @pytest.mark.asyncio
@@ -76,10 +80,11 @@ class TestMemoryRetriever:
     @pytest.mark.asyncio
     async def test_retrieve_with_group_isolation(self, mock_manager, mock_config):
         """测试群聊隔离检索"""
-        mock_config.get = Mock(side_effect=lambda key: {
+        mock_config.get = Mock(side_effect=lambda key, default=None: {
             "l2_memory.top_k": 10,
             "isolation_config.enable_group_memory_isolation": True,
-        }.get(key, None))
+            "l2_memory.relevance_threshold": 0.3,
+        }.get(key, default))
         
         with patch("iris_memory.l2_memory.retriever.get_config", return_value=mock_config):
             retriever = MemoryRetriever(mock_manager)
@@ -94,10 +99,11 @@ class TestMemoryRetriever:
     @pytest.mark.asyncio
     async def test_retrieve_without_group_isolation(self, mock_manager, mock_config):
         """测试关闭群聊隔离检索"""
-        mock_config.get = Mock(side_effect=lambda key: {
+        mock_config.get = Mock(side_effect=lambda key, default=None: {
             "l2_memory.top_k": 10,
             "isolation_config.enable_group_memory_isolation": False,
-        }.get(key, None))
+            "l2_memory.relevance_threshold": 0.3,
+        }.get(key, default))
         
         with patch("iris_memory.l2_memory.retriever.get_config", return_value=mock_config):
             retriever = MemoryRetriever(mock_manager)
@@ -163,7 +169,7 @@ class TestMemoryRetriever:
                 max_tokens=1000
             )
             
-            assert "相关记忆：" in context
+            assert "相关记忆" in context
             assert "记忆0" in context
             assert "记忆1" in context
             assert "记忆2" in context

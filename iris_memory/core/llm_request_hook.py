@@ -7,7 +7,7 @@ LLM 请求钩子处理模块
 - 图片解析（related 模式）
 - 知识图谱检索结果注入（未来扩展）
 """
-from typing import TYPE_CHECKING, List, cast
+from typing import TYPE_CHECKING, List, Optional, cast
 
 from iris_memory.core import get_logger
 
@@ -170,6 +170,74 @@ async def _inject_user_profile(
         logger.debug(f"已注入画像信息到群聊 {group_id} 用户 {user_id}")
 
 
+async def _rewrite_query_for_retrieval(
+    user_message: str,
+    component_manager: "ComponentManager"
+) -> Optional[str]:
+    """查询改写：从用户消息中提取检索意图
+    
+    使用 LLM 将用户原始消息改写为更适合向量检索的查询文本。
+    例如："你还记得我喜欢什么吗？" → "用户偏好 喜好"
+    
+    Args:
+        user_message: 用户原始消息
+        component_manager: 组件管理器实例
+    
+    Returns:
+        改写后的查询文本，失败时返回 None（使用原始消息）
+    """
+    from iris_memory.config import get_config
+    import asyncio
+    
+    config = get_config()
+    
+    if not config.get("l2_query_rewrite_enable", True):
+        return None
+    
+    llm_manager = component_manager.get_component("llm_manager")
+    if not llm_manager or not llm_manager.is_available:
+        return None
+    
+    prompt = (
+        "从以下用户消息中提取用于记忆检索的关键信息，输出简洁的搜索关键词。\n"
+        "规则：\n"
+        "1. 只输出搜索关键词，不要解释\n"
+        "2. 去除无意义的口语和语气词\n"
+        "3. 提取核心实体、事件和偏好\n"
+        "4. 如果消息是询问记忆相关的内容，提取被询问的主题\n"
+        "5. 多个关键词用空格分隔\n"
+        "6. 如果消息不包含可检索的信息（如纯闲聊），输出：无\n\n"
+        f"用户消息：{user_message}\n\n搜索关键词："
+    )
+    
+    timeout_ms = config.get("l2_query_rewrite_timeout_ms", 3000)
+    
+    try:
+        rewritten = await asyncio.wait_for(
+            llm_manager.generate(
+                prompt=prompt,
+                module="l2_query_rewrite"
+            ),
+            timeout=timeout_ms / 1000.0
+        )
+        
+        rewritten = rewritten.strip()
+        
+        if not rewritten or rewritten == "无":
+            logger.debug(f"查询改写结果为空，使用原始消息")
+            return None
+        
+        logger.debug(f"查询改写：'{user_message[:30]}...' -> '{rewritten}'")
+        return rewritten
+        
+    except asyncio.TimeoutError:
+        logger.debug(f"查询改写超时（{timeout_ms}ms），使用原始消息")
+        return None
+    except Exception as e:
+        logger.debug(f"查询改写失败：{e}，使用原始消息")
+        return None
+
+
 async def _inject_l2_memory(
     event: "AstrMessageEvent",
     req: "ProviderRequest",
@@ -181,10 +249,12 @@ async def _inject_l2_memory(
     
     流程：
     1. 检查 L2 是否启用
-    2. 执行向量检索
-    3. Token 预算控制
-    4. 注入到 system_prompt
-    5. 返回检索结果（供 L3 使用）
+    2. 查询改写（提取检索意图）
+    3. 执行向量检索（含相似度阈值过滤）
+    4. 增强检索（图增强/重排序，可选）
+    5. Token 预算控制
+    6. 注入到 system_prompt
+    7. 返回检索结果（供 L3 使用）
     
     Args:
         event: AstrBot 消息事件对象
@@ -226,43 +296,75 @@ async def _inject_l2_memory(
         return []
     
     try:
-        # 4. 创建记忆检索器
+        # 4. 查询改写（提取检索意图）
+        rewritten_query = await _rewrite_query_for_retrieval(
+            query_text, component_manager
+        )
+        search_query = rewritten_query if rewritten_query else query_text
+        
+        # 5. 创建记忆检索器
         from iris_memory.l2_memory import MemoryRetriever
         
-        retriever = MemoryRetriever(component_manager)
+        llm_manager = component_manager.get_component("llm_manager")
+        retriever = MemoryRetriever(component_manager, llm_manager)
         
-        # 5. 执行向量检索
-        results = await retriever.retrieve(query_text, group_id)
+        # 6. 检查是否启用增强检索
+        enable_graph = config.get("l2_memory.enable_graph_enhancement", False)
+        enable_rerank = config.get("enhancement.enable_rerank", False)
         
-        if not results:
-            logger.debug("L2 检索未找到相关记忆")
-            return []
-        
-        # 6. Token 预算控制
-        from iris_memory.enhancement import TokenBudgetController
-        
-        budget_controller = TokenBudgetController()
-        max_tokens = config.get("token_budget_max_tokens", 2000)
-        
-        trimmed_results, actual_tokens = budget_controller.trim_memories(
-            memories=results,
-            max_tokens=max_tokens
-        )
-        
-        logger.debug(f"L2 检索到 {len(results)} 条记忆，裁剪后 {len(trimmed_results)} 条")
-        
-        # 7. 格式化并注入到 system_prompt
-        memory_text = _format_l2_memories_for_injection(trimmed_results)
-        
-        if memory_text:
-            if req.prompt:
-                req.prompt = memory_text + "\n\n" + req.prompt
-            else:
-                req.prompt = memory_text
+        if enable_graph or enable_rerank:
+            # 走增强检索路径
+            context_text = await retriever.retrieve_for_context(
+                query=search_query,
+                group_id=group_id,
+                max_tokens=config.get("token_budget_max_tokens", 2000)
+            )
             
-            logger.debug(f"已注入 L2 记忆到群聊 {group_id}")
-        
-        return trimmed_results
+            # 获取原始检索结果供 L3 使用
+            results = await retriever.retrieve(search_query, group_id)
+            
+            if context_text:
+                if req.prompt:
+                    req.prompt = context_text + "\n\n" + req.prompt
+                else:
+                    req.prompt = context_text
+                
+                logger.debug(f"已注入增强检索记忆到群聊 {group_id}")
+            
+            return results
+        else:
+            # 基础检索路径
+            results = await retriever.retrieve(search_query, group_id)
+            
+            if not results:
+                logger.debug("L2 检索未找到相关记忆")
+                return []
+            
+            # Token 预算控制
+            from iris_memory.enhancement import TokenBudgetController
+            
+            budget_controller = TokenBudgetController()
+            max_tokens = config.get("token_budget_max_tokens", 2000)
+            
+            trimmed_results, actual_tokens = budget_controller.trim_memories(
+                memories=results,
+                max_tokens=max_tokens
+            )
+            
+            logger.debug(f"L2 检索到 {len(results)} 条记忆，裁剪后 {len(trimmed_results)} 条")
+            
+            # 格式化并注入到 system_prompt
+            memory_text = _format_l2_memories_for_injection(trimmed_results)
+            
+            if memory_text:
+                if req.prompt:
+                    req.prompt = memory_text + "\n\n" + req.prompt
+                else:
+                    req.prompt = memory_text
+                
+                logger.debug(f"已注入 L2 记忆到群聊 {group_id}")
+            
+            return trimmed_results
     
     except Exception as e:
         logger.error(f"L2 记忆注入失败: {e}", exc_info=True)

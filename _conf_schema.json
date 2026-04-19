@@ -83,6 +83,12 @@
         "default": 2000,
         "description": "检索超时 (毫秒)",
         "hint": "超时后跳过 L2 结果"
+      },
+      "relevance_threshold": {
+        "type": "float",
+        "default": 0.3,
+        "description": "相关性阈值",
+        "hint": "低于此分数的检索结果将被过滤，0 表示不过滤，推荐 0.2-0.5"
       }
     }
   },
