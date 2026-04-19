@@ -1,6 +1,9 @@
 # 向量数据库
 chromadb>=0.4.0
 
+# 嵌入模型（支持中文模型如 bge-small-zh-v1.5）
+sentence-transformers>=2.2.0
+
 # 知识图谱数据库
 kuzu>=0.4.0
 
