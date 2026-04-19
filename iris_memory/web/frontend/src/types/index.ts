@@ -103,15 +103,12 @@ export interface L1ListResponse {
 export interface GroupProfile {
   group_id: string
   group_name?: string
-  current_topic?: string
-  active_users?: string[]
   interests?: string[]
-  active_time_slots?: string[]
   atmosphere_tags?: string[]
-  common_expressions?: string[]
   long_term_tags?: string[]
   blacklist_topics?: string[]
-  last_interaction_time?: string
+  custom_fields?: Record<string, string>
+  version?: number
 }
 
 // 用户画像
@@ -119,7 +116,6 @@ export interface UserProfile {
   user_id: string
   user_name?: string
   historical_names?: string[]
-  current_emotional_state?: string
   personality_tags?: string[]
   interests?: string[]
   occupation?: string
@@ -128,7 +124,8 @@ export interface UserProfile {
   important_dates?: Array<{ date: string; description: string }>
   taboo_topics?: string[]
   important_events?: string[]
-  last_interaction_time?: string
+  custom_fields?: Record<string, string>
+  version?: number
 }
 
 // 群聊列表项

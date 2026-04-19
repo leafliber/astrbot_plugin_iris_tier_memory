@@ -252,6 +252,14 @@ class LLMManager(Component):
             默认 Provider ID，无法获取时返回 None
         """
         try:
+            if hasattr(self._context, 'get_config'):
+                config = self._context.get_config()
+                if config:
+                    provider_settings = config.get("provider_settings", {})
+                    default_provider_id = provider_settings.get("default_provider_id")
+                    if default_provider_id:
+                        return default_provider_id
+            
             if hasattr(self._context, 'provider_manager'):
                 provider_manager = self._context.provider_manager
                 if hasattr(provider_manager, 'get_default_provider'):

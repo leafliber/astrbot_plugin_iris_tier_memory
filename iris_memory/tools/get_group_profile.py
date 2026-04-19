@@ -124,15 +124,9 @@ class GetGroupProfileTool(FunctionTool[AstrAgentContext]):
         lines = [
             f"## 群聊画像 - {profile.group_name or profile.group_id}",
             f"",
-            f"**当前话题**: {profile.current_topic or '无'}",
-            f"**最近互动**: {profile.last_interaction_time or '未知'}",
-            f"",
             f"**群聊兴趣**: {', '.join(profile.interests) or '暂无'}",
             f"**氛围标签**: {', '.join(profile.atmosphere_tags) or '暂无'}",
             f"**核心特征**: {', '.join(profile.long_term_tags) or '暂无'}",
-            f"",
-            f"**活跃用户**: {', '.join(profile.active_users[:10]) or '暂无'}",
-            f"**常用语/梗**: {', '.join(profile.common_expressions) or '暂无'}",
             f"",
             f"**禁忌话题**: {', '.join(profile.blacklist_topics) or '无'}"
         ]

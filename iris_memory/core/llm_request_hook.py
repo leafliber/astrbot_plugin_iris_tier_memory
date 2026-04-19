@@ -539,8 +539,6 @@ def _format_profiles_for_injection(
     parts = []
     
     group_parts = []
-    if group_profile.current_topic:
-        group_parts.append(f"话题:{group_profile.current_topic}")
     if group_profile.interests:
         group_parts.append(f"兴趣:{','.join(group_profile.interests[:3])}")
     if group_profile.atmosphere_tags:
@@ -554,8 +552,6 @@ def _format_profiles_for_injection(
     user_parts = []
     if user_profile.user_name:
         user_parts.append(f"昵称:{user_profile.user_name}")
-    if user_profile.current_emotional_state:
-        user_parts.append(f"情绪:{user_profile.current_emotional_state}")
     if user_profile.personality_tags:
         user_parts.append(f"性格:{','.join(user_profile.personality_tags[:3])}")
     if user_profile.interests:
